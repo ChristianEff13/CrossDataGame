@@ -670,13 +670,52 @@
                 const ey = sy + (gridSize-ent.h)/2;
                 ctx.save();
                 if (ent.isBug) {
+                    const p = Math.floor(ent.w / 11); 
+                    const bugX = ent.x;
+                    const bugY = ey;
+                    
+                    // Animasi state berdasarkan waktu
+                    const isAlt = Math.floor(Date.now() / 300) % 2 === 0;
+
                     ctx.shadowBlur = 15;
                     ctx.shadowColor = `rgba(248, 81, 73, ${ent.glow})`;
                     ctx.fillStyle = '#f85149';
-                    ctx.fillRect(ent.x, ey, ent.w, ent.h);
+                    
+                    const drawPix = (x, y) => ctx.fillRect(bugX + x*p, bugY + y*p, p, p);
+                    
+                    // Baris 1: Tanduk/Antena
+                    drawPix(2,0); drawPix(8,0);
+                    // Baris 2: Tanduk/Antena sambungan
+                    drawPix(3,1); drawPix(7,1);
+                    // Baris 3: Kepala atas
+                    for(let i=2; i<=8; i++) drawPix(i,2);
+                    // Baris 4: Telinga samping & mata atas
+                    for(let i=1; i<=3; i++) drawPix(i,3); 
+                    for(let i=7; i<=9; i++) drawPix(i,3);
+                    // Baris 5: Badan penuh & mata bawah
+                    for(let i=0; i<=10; i++) drawPix(i,4);
+                    
+                    // ANIMASI KAKI (Berubah posisi tiap interval)
+                    if (isAlt) {
+                        // Posisi A (Kaki ke arah dalam)
+                        drawPix(0,5); drawPix(10,5);
+                        drawPix(0,6); drawPix(2,6); drawPix(8,6); drawPix(10,6);
+                        drawPix(3,7); drawPix(4,7); drawPix(6,7); drawPix(7,7);
+                        // Tengah badan kaki
+                        for(let i=2; i<=8; i++) drawPix(i,5);
+                    } else {
+                        // Posisi B (Kaki ke arah luar / Tentakel bawah berubah)
+                        for(let i=2; i<=8; i++) drawPix(i,5);
+                        drawPix(0,5); drawPix(10,5);
+                        drawPix(1,6); drawPix(9,6);
+                        drawPix(0,7); drawPix(2,7); drawPix(8,7); drawPix(10,7);
+                    }
+
+                    // Mata Putih
                     ctx.fillStyle = 'white';
-                    ctx.fillRect(ent.x + 8, ey + 8, 6, 6);
-                    ctx.fillRect(ent.x + ent.w - 14, ey + 8, 6, 6);
+                    ctx.fillRect(bugX + 3*p, bugY + 3*p, p, p);
+                    ctx.fillRect(bugX + 7*p, bugY + 3*p, p, p);
+                    
                 } else if (row.type === 'road') {
                     ctx.fillStyle = ent.color;
                     ctx.shadowBlur = 10;
@@ -746,7 +785,6 @@
         gcSpeed = 0.22; player.init(); 
         initMap();
         gameActive = true; messageBox.style.display = 'none';
-        // Restart music if it was stopped
         if (musicStarted) playMusic();
     }
 
