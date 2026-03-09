@@ -134,8 +134,9 @@
         <div class="stats-box">
             <div class="text-[10px] uppercase tracking-[0.3em] text-teal-400 font-bold mb-1">DATA RECOVERED</div>
             <div class="text-4xl font-black italic text-white drop-shadow-lg"><span id="score">0</span></div>
+            <div class="text-[10px] text-gray-400 mt-1 uppercase">Highscore: <span id="highscore">0</span></div>
             <div id="shield-ui" class="hidden text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1">
-                <span class="animate-pulse">●</span> SHIELD_PROTOCOL: AKTIF (<span id="shield-timer">10</span>s)
+                <span class="animate-pulse">●</span> SHIELD_PROTOCOL: AKTIF (<span id="shield-timer">5</span>s)
             </div>
         </div>
     </div>
@@ -165,6 +166,7 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreElement = document.getElementById('score');
+    const highscoreElement = document.getElementById('highscore');
     const messageBox = document.getElementById('message-box');
     const shieldUi = document.getElementById('shield-ui');
     const shieldTimerDisplay = document.getElementById('shield-timer');
@@ -172,6 +174,10 @@
     const gridSize = 64;
     let gameActive = true;
     let score = 0;
+    let bonusScore = 0; 
+    let highscore = localStorage.getItem('elephant_highscore') || 0;
+    highscoreElement.innerText = highscore;
+    
     let maxDistance = 0;
     let cameraY = 0;
     let targetCameraY = 0;
@@ -183,7 +189,7 @@
     const particles = [];
     const bullets = [];
     const items = [];
-    const rows = [];
+    let rows = [];
     
     function spawnParticles(x, y, color, count = 10, speed = 5) {
         for (let i = 0; i < count; i++) {
@@ -205,6 +211,16 @@
     }
     window.addEventListener('resize', resize);
     resize();
+
+    function updateScoreDisplay() {
+        score = (maxDistance * 10) + bonusScore;
+        scoreElement.innerText = score;
+        if (score > highscore) {
+            highscore = score;
+            highscoreElement.innerText = highscore;
+            localStorage.setItem('elephant_highscore', highscore);
+        }
+    }
 
     const player = {
         gridX: 0, gridY: 0, pixelX: 0, pixelY: 0, targetX: 0, targetY: 0,
@@ -245,8 +261,7 @@
             let currentDist = startGridY - this.gridY;
             if (currentDist > maxDistance) {
                 maxDistance = currentDist;
-                score = maxDistance * 10;
-                scoreElement.innerText = score;
+                updateScoreDisplay();
                 gcSpeed = 0.22 + (score / 4500);
             }
         },
@@ -367,13 +382,13 @@
         }
     };
 
-    function createRow(y) {
+    function createRow(y, forceType = null) {
         const types = ['grass', 'road', 'road', 'river', 'grass'];
-        let type = types[Math.floor(Math.random() * types.length)];
+        let type = forceType || types[Math.floor(Math.random() * types.length)];
         const row = {
             y: y, type: type, entities: [],
             speed: (Math.random() * 2 + 1.2) * (Math.random() > 0.5 ? 1 : -1),
-            color: type === 'grass' ? '#0d1117' : (type === 'road' ? '#161b22' : '#0a192f'),
+            color: type === 'grass' ? '#0d1117' : (type === 'road' ? '#161b22' : '#440a0a'),
             deco: []
         };
 
@@ -385,12 +400,12 @@
 
         if (type === 'road') {
             for (let i = 0; i < 2; i++) row.entities.push({ 
-                x: Math.random() * canvas.width, w: 110, h: 42, color: '#30363d' 
+                x: Math.random() * canvas.width, w: 110, h: 42, color: '#3fb950' 
             });
         } else if (type === 'river') {
             row.speed *= 0.7;
             for (let i = 0; i < 3; i++) row.entities.push({ 
-                x: Math.random() * canvas.width, w: 140, h: 46, color: '#4a3728' 
+                x: Math.random() * canvas.width, w: 140, h: 46, color: 'rgba(0, 255, 255, 0.2)' 
             });
         } else if (type === 'grass') {
             if (y < player.gridY - 4 && Math.random() > 0.65) {
@@ -412,6 +427,16 @@
         document.getElementById('msg-title').innerText = title;
         document.getElementById('msg-text').innerText = text;
         messageBox.style.display = 'block';
+    }
+
+    function initMap() {
+        rows = [];
+        items.length = 0;
+        for (let i = player.gridY + 10; i > -40; i--) {
+            let type = null;
+            if (i >= player.gridY - 1 && i <= player.gridY + 1) type = 'grass';
+            rows.push(createRow(i, type));
+        }
     }
 
     function update() {
@@ -445,7 +470,8 @@
                             spawnParticles(ent.x + ent.w/2, ey + ent.h/2, '#ff4444', 20, 8);
                             row.entities.splice(j, 1);
                             bullets.splice(i, 1);
-                            score += 150; scoreElement.innerText = score;
+                            bonusScore += 150; 
+                            updateScoreDisplay();
                         }
                     }
                 });
@@ -456,14 +482,13 @@
         items.forEach((itm, i) => {
             if (player.gridX === itm.gridX && player.gridY === itm.gridY) {
                 player.hasShield = true;
-                player.shieldTime = 10000;
+                player.shieldTime = 5000;
                 shieldUi.classList.remove('hidden');
                 spawnParticles(player.pixelX + gridSize/2, player.pixelY + gridSize/2, '#3fb950', 20, 5);
                 items.splice(i, 1);
             }
         });
 
-        // Flag untuk memastikan gajah hanya tergeser sekali per frame
         let shiftedByLog = false;
         
         rows.forEach(row => {
@@ -482,19 +507,18 @@
                 }
             });
             
-            // Perbaikan: Hanya geser gajah SEKALI per frame meskipun ada banyak baris yang dicek
             if (!shiftedByLog && row.type === 'river' && Math.round(player.pixelY/gridSize) === row.y && !player.isMoving) {
                 let safe = false;
-                row.entities.forEach(log => {
+                for(let log of row.entities) {
                     if (player.pixelX+gridSize/2 > log.x && player.pixelX+gridSize/2 < log.x+log.w) {
                         safe = true; 
                         player.pixelX += row.speed; 
                         player.targetX = player.pixelX;
                         player.gridX = Math.round(player.pixelX/gridSize);
-                        shiftedByLog = true; // Kunci agar tidak bergeser lagi di loop ini
+                        shiftedByLog = true;
+                        break;
                     }
-                });
-                
+                }
                 if (!safe && !player.hasShield) checkCollision("SEGMENTATION FAULT", "Gajah jatuh ke dalam aliran memori!");
             }
         });
@@ -514,6 +538,16 @@
             ctx.fillStyle = row.color; 
             ctx.fillRect(0, sy, canvas.width, gridSize);
 
+            // Efek kode mengalir di sungai (merah)
+            if (row.type === 'river') {
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
+                ctx.font = '10px monospace';
+                for(let i=0; i<canvas.width; i+=40) {
+                    const char = Math.random() > 0.5 ? '1' : '0';
+                    ctx.fillText(char, (i + Date.now()/20) % canvas.width, sy + 15 + (i%30));
+                }
+            }
+
             if (row.type === 'grass') {
                 row.deco.forEach(d => {
                     ctx.fillStyle = `rgba(44, 241, 218, ${d.opacity})`;
@@ -532,11 +566,27 @@
                     ctx.fillStyle = 'white';
                     ctx.fillRect(ent.x + 8, ey + 8, 6, 6);
                     ctx.fillRect(ent.x + ent.w - 14, ey + 8, 6, 6);
-                } else {
+                } else if (row.type === 'road') {
+                    // Data Package (Hijau dengan biner)
                     ctx.fillStyle = ent.color;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#3fb950';
                     ctx.fillRect(ent.x, ey, ent.w, ent.h);
-                    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-                    ctx.strokeRect(ent.x + 4, ey + 4, ent.w - 8, ent.h - 8);
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    ctx.font = 'bold 10px monospace';
+                    ctx.fillText('10110', ent.x + 10, ey + 25);
+                } else if (row.type === 'river') {
+                    // Log diubah menjadi Data Block (Cyan futuristik)
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';
+                    ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.fillRect(ent.x, ey, ent.w, ent.h);
+                    ctx.strokeRect(ent.x, ey, ent.w, ent.h);
+                    // Garis sirkuit dalam log
+                    ctx.beginPath();
+                    ctx.moveTo(ent.x + 10, ey + ent.h/2);
+                    ctx.lineTo(ent.x + ent.w - 10, ey + ent.h/2);
+                    ctx.stroke();
                 }
                 ctx.restore();
             });
@@ -581,9 +631,12 @@
     }
 
     function resetGame() {
-        maxDistance = 0; score = 0; scoreElement.innerText = score;
-        gcSpeed = 0.22; player.init(); rows.length = 0; items.length = 0;
-        for (let i = player.gridY + 10; i > -40; i--) rows.push(createRow(i));
+        maxDistance = 0; 
+        score = 0; 
+        bonusScore = 0;
+        scoreElement.innerText = score;
+        gcSpeed = 0.22; player.init(); 
+        initMap();
         gameActive = true; messageBox.style.display = 'none';
     }
 
@@ -608,7 +661,7 @@
     });
 
     player.init();
-    for (let i = player.gridY + 10; i > -40; i--) rows.push(createRow(i));
+    initMap();
     window.onload = draw;
 </script>
 </body>
