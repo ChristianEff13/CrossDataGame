@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -148,13 +148,13 @@
             <div class="text-4xl font-black italic text-white drop-shadow-lg"><span id="score">0</span></div>
             <div class="text-[10px] text-gray-400 mt-1 uppercase">Highscore: <span id="highscore">0</span></div>
             <div id="shield-ui" class="hidden text-[10px] text-green-400 font-bold mt-2 flex items-center gap-1">
-                <span class="animate-pulse">●</span> SHIELD_PROTOCOL: AKTIF (<span id="shield-timer">5</span>s)
+                <span class="animate-pulse">●</span> SHIELD_PROTOCOL: ACTIVE (<span id="shield-timer">5</span>s)
             </div>
         </div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
-    <div id="audio-hint">Tekan apapun untuk memulai Audio</div>
+    <div id="audio-hint">Press any key to start Audio</div>
 
     <div class="mobile-controls">
         <div class="dpad">
@@ -559,7 +559,7 @@
         if (shakeAmount > 0) shakeAmount *= 0.9;
         gcY -= gcSpeed;
 
-        if (player.pixelY + 30 > gcY) checkCollision("MEMORY PURGE", "Gajah gagal menghindari pembersihan memori!");
+        if (player.pixelY + 30 > gcY) checkCollision("MEMORY PURGE", "Elephant failed to avoid the memory sweep!");
 
         for (let i = particles.length - 1; i >= 0; i--) {
             const p = particles[i];
@@ -615,7 +615,7 @@
                 const px = player.pixelX + 22; const py = player.pixelY + 22;
                 const ey = row.y * gridSize + (gridSize-ent.h)/2;
                 if ((row.type === 'road' || ent.isBug) && !player.isMoving) {
-                    if (px < ent.x+ent.w && px+20 > ent.x && py < ey+ent.h && py+20 > ey) checkCollision("DATA LOSS", "Tabrakan paket data terdeteksi!");
+                    if (px < ent.x+ent.w && px+20 > ent.x && py < ey+ent.h && py+20 > ey) checkCollision("DATA LOSS", "Data packet collision detected!");
                 }
             });
             
@@ -631,7 +631,7 @@
                         break;
                     }
                 }
-                if (!safe && !player.hasShield) checkCollision("SEGMENTATION FAULT", "Gajah jatuh ke dalam aliran memori!");
+                if (!safe && !player.hasShield) checkCollision("SEGMENTATION FAULT", "Elephant fell into the memory stream!");
             }
         });
 
@@ -674,7 +674,7 @@
                     const bugX = ent.x;
                     const bugY = ey;
                     
-                    // Animasi state berdasarkan waktu
+                    // State animation based on time
                     const isAlt = Math.floor(Date.now() / 300) % 2 === 0;
 
                     ctx.shadowBlur = 15;
@@ -683,35 +683,35 @@
                     
                     const drawPix = (x, y) => ctx.fillRect(bugX + x*p, bugY + y*p, p, p);
                     
-                    // Baris 1: Tanduk/Antena
+                    // Row 1: Horns/Antenna
                     drawPix(2,0); drawPix(8,0);
-                    // Baris 2: Tanduk/Antena sambungan
+                    // Row 2: Antenna connection
                     drawPix(3,1); drawPix(7,1);
-                    // Baris 3: Kepala atas
+                    // Row 3: Top of head
                     for(let i=2; i<=8; i++) drawPix(i,2);
-                    // Baris 4: Telinga samping & mata atas
+                    // Row 4: Side ears & upper eyes
                     for(let i=1; i<=3; i++) drawPix(i,3); 
                     for(let i=7; i<=9; i++) drawPix(i,3);
-                    // Baris 5: Badan penuh & mata bawah
+                    // Row 5: Full body & lower eyes
                     for(let i=0; i<=10; i++) drawPix(i,4);
                     
-                    // ANIMASI KAKI (Berubah posisi tiap interval)
+                    // LEG ANIMATION
                     if (isAlt) {
-                        // Posisi A (Kaki ke arah dalam)
+                        // Position A (Inner legs)
                         drawPix(0,5); drawPix(10,5);
                         drawPix(0,6); drawPix(2,6); drawPix(8,6); drawPix(10,6);
                         drawPix(3,7); drawPix(4,7); drawPix(6,7); drawPix(7,7);
-                        // Tengah badan kaki
+                        // Middle body legs
                         for(let i=2; i<=8; i++) drawPix(i,5);
                     } else {
-                        // Posisi B (Kaki ke arah luar / Tentakel bawah berubah)
+                        // Position B (Outer legs)
                         for(let i=2; i<=8; i++) drawPix(i,5);
                         drawPix(0,5); drawPix(10,5);
                         drawPix(1,6); drawPix(9,6);
                         drawPix(0,7); drawPix(2,7); drawPix(8,7); drawPix(10,7);
                     }
 
-                    // Mata Putih
+                    // White Eyes
                     ctx.fillStyle = 'white';
                     ctx.fillRect(bugX + 3*p, bugY + 3*p, p, p);
                     ctx.fillRect(bugX + 7*p, bugY + 3*p, p, p);
@@ -801,10 +801,11 @@
     bind('btn-fire', () => player.shoot());
 
     window.addEventListener('keydown', e => {
-        if (e.code === 'ArrowUp') player.move(0, -1);
-        if (e.code === 'ArrowDown') player.move(0, 1);
-        if (e.code === 'ArrowLeft') player.move(-1, 0);
-        if (e.code === 'ArrowRight') player.move(1, 0);
+        // Support Arrow Keys and WASD
+        if (e.code === 'ArrowUp' || e.code === 'KeyW') player.move(0, -1);
+        if (e.code === 'ArrowDown' || e.code === 'KeyS') player.move(0, 1);
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') player.move(-1, 0);
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') player.move(1, 0);
         if (e.code === 'Space' || e.code === 'KeyF') player.shoot();
     });
 
