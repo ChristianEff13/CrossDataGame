@@ -40,41 +40,41 @@
 
         .mobile-controls {
             position: absolute;
-            bottom: 30px;
+            bottom: 20px;
             left: 0;
             right: 0;
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
-            padding: 0 30px;
+            padding: 0 20px;
             pointer-events: none;
             z-index: 50;
         }
 
         .dpad {
             display: grid;
-            grid-template-columns: repeat(3, 75px);
-            grid-template-rows: repeat(3, 75px);
-            gap: 12px;
+            grid-template-columns: repeat(3, 55px);
+            grid-template-rows: repeat(3, 55px);
+            gap: 8px;
             pointer-events: auto;
         }
 
         .ctrl-btn {
             background: rgba(48, 54, 61, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 18px;
+            border-radius: 14px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 26px;
+            font-size: 20px;
             transition: all 0.1s;
-            box-shadow: 0 6px 0 rgba(0,0,0,0.5);
+            box-shadow: 0 4px 0 rgba(0,0,0,0.5);
         }
 
         .ctrl-btn:active {
-            transform: translateY(4px);
-            box-shadow: 0 2px 0 rgba(0,0,0,0.5);
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 rgba(0,0,0,0.5);
             background: #2cf1da;
             color: #0d1117;
         }
@@ -85,13 +85,13 @@
         .btn-down { grid-column: 2; grid-row: 3; }
 
         .btn-fire {
-            width: 110px;
-            height: 110px;
+            width: 85px;
+            height: 85px;
             border-radius: 50%;
             background: linear-gradient(135deg, #f85149 0%, #b62323 100%);
-            border: 4px solid rgba(255, 255, 255, 0.2);
-            font-size: 44px;
-            box-shadow: 0 8px 0 #7a1510, 0 0 30px rgba(248, 81, 73, 0.3);
+            border: 3px solid rgba(255, 255, 255, 0.2);
+            font-size: 32px;
+            box-shadow: 0 6px 0 #7a1510, 0 0 20px rgba(248, 81, 73, 0.3);
             pointer-events: auto;
         }
         
@@ -178,6 +178,7 @@
     let shakeAmount = 0;
     let gcY = 0;
     let gcSpeed = 0.22; 
+    let startGridY = 0;
 
     const particles = [];
     const bullets = [];
@@ -213,6 +214,7 @@
         init() {
             this.gridX = Math.floor(canvas.width / 2 / gridSize);
             this.gridY = Math.floor(canvas.height / gridSize) - 2;
+            startGridY = this.gridY; 
             this.targetX = this.gridX * gridSize;
             this.targetY = this.gridY * gridSize;
             this.pixelX = this.targetX;
@@ -240,9 +242,9 @@
             
             spawnParticles(this.pixelX + gridSize/2, this.pixelY + gridSize/2, '#2cf1da', 5, 2);
 
-            let dist = (Math.floor(canvas.height / gridSize) - 2) - this.gridY;
-            if (dist > maxDistance) {
-                maxDistance = dist;
+            let currentDist = startGridY - this.gridY;
+            if (currentDist > maxDistance) {
+                maxDistance = currentDist;
                 score = maxDistance * 10;
                 scoreElement.innerText = score;
                 gcSpeed = 0.22 + (score / 4500);
@@ -269,9 +271,8 @@
             }
             if (this.trunkAnim > 0) this.trunkAnim -= 0.12;
             
-            // Logika durasi Shield
             if (this.hasShield) {
-                this.shieldTime -= 16.67; // Pengurangan berdasarkan ~60fps
+                this.shieldTime -= 16.67; 
                 shieldTimerDisplay.innerText = Math.max(0, Math.ceil(this.shieldTime / 1000));
                 if (this.shieldTime <= 0) {
                     this.hasShield = false;
@@ -404,7 +405,6 @@
     }
 
     function checkCollision(title, text) {
-        // Jika sedang Shield, abaikan tabrakan
         if (player.hasShield) return;
         
         gameActive = false;
@@ -455,7 +455,6 @@
 
         items.forEach((itm, i) => {
             if (player.gridX === itm.gridX && player.gridY === itm.gridY) {
-                // Berikan shield selama 10 detik (10000 ms)
                 player.hasShield = true;
                 player.shieldTime = 10000;
                 shieldUi.classList.remove('hidden');
@@ -464,6 +463,9 @@
             }
         });
 
+        // Flag untuk memastikan gajah hanya tergeser sekali per frame
+        let shiftedByLog = false;
+        
         rows.forEach(row => {
             row.entities.forEach(ent => {
                 if (ent.isBug) {
@@ -479,16 +481,20 @@
                     if (px < ent.x+ent.w && px+20 > ent.x && py < ey+ent.h && py+20 > ey) checkCollision("DATA LOSS", "Tabrakan paket data terdeteksi!");
                 }
             });
-            if (row.type === 'river' && Math.round(player.pixelY/gridSize) === row.y && !player.isMoving) {
+            
+            // Perbaikan: Hanya geser gajah SEKALI per frame meskipun ada banyak baris yang dicek
+            if (!shiftedByLog && row.type === 'river' && Math.round(player.pixelY/gridSize) === row.y && !player.isMoving) {
                 let safe = false;
                 row.entities.forEach(log => {
                     if (player.pixelX+gridSize/2 > log.x && player.pixelX+gridSize/2 < log.x+log.w) {
-                        safe = true; player.pixelX += row.speed; player.targetX = player.pixelX;
+                        safe = true; 
+                        player.pixelX += row.speed; 
+                        player.targetX = player.pixelX;
                         player.gridX = Math.round(player.pixelX/gridSize);
+                        shiftedByLog = true; // Kunci agar tidak bergeser lagi di loop ini
                     }
                 });
                 
-                // Jika sedang shield, gajah bisa berenang/melayang di sungai
                 if (!safe && !player.hasShield) checkCollision("SEGMENTATION FAULT", "Gajah jatuh ke dalam aliran memori!");
             }
         });
