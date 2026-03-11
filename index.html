@@ -10,16 +10,18 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background-color: #05070a;
+            background-color: #05070a; 
             font-family: 'JetBrains Mono', 'Fira Code', monospace;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
+            transition: background-color 1s ease;
         }
         canvas {
             display: block;
             margin: 0 auto;
-            background: #080a0d;
+            background: #080a0d; 
             touch-action: none;
+            transition: background-color 1s ease;
         }
         #ui-overlay {
             position: absolute;
@@ -175,8 +177,24 @@
                 <div id="2x-ui" class="hidden text-[10px] text-yellow-400 font-bold flex items-center gap-1">
                     <span class="animate-bounce">★</span> 2X_SCORE_MULTIPLIER: ON (<span id="2x-timer">20</span>s)
                 </div>
+                <!-- Status Powerup Baru -->
+                <div id="freeze-ui" class="hidden text-[10px] text-cyan-400 font-bold flex items-center gap-1">
+                    <span class="animate-pulse">❄️</span> SYS_FREEZE: ACTIVE (<span id="freeze-timer">5</span>s)
+                </div>
+                <div id="spread-ui" class="hidden text-[10px] text-orange-400 font-bold flex items-center gap-1">
+                    <span class="animate-pulse">🔥</span> OVERCLOCK: ON (<span id="spread-timer">10</span>s)
+                </div>
             </div>
         </div>
+    </div>
+
+    <!-- Tombol Pause UI Baru -->
+    <div id="pause-btn" class="absolute top-5 right-5 z-50 cursor-pointer bg-gray-800/80 rounded-xl border border-white/10 text-white shadow-lg backdrop-blur-md transition active:bg-teal-400 active:text-black flex items-center justify-center text-xl w-12 h-12" onclick="togglePause()">
+        ⏸️
+    </div>
+
+    <div id="pause-screen" class="hidden absolute inset-0 bg-black/60 z-40 flex items-center justify-center backdrop-blur-sm">
+        <div class="text-5xl font-black text-white tracking-[0.5em] drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">PAUSED</div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -242,9 +260,21 @@
         [329.63, 392.00, 440.00, 523.25]
     ];
     let musicTick = 0;
+    
     function playMusic() {
         if (!gameActive) return;
-        const tempo = 150; 
+        
+        // --- FITUR TENSI AUDIO ---
+        // Jika sedang pause, tunggu bentar lalu loop lagi tanpa mainkan nada
+        if (isPaused) {
+            setTimeout(playMusic, 150);
+            return;
+        }
+        
+        // Tempo makin cepat kalau batas kematian (Garbage Collector) sudah dekat (kurang dari 400 pixel)
+        let distToDeath = gcY - player.pixelY;
+        const tempo = distToDeath < 400 ? 90 : 150; 
+        
         if (musicTick % 4 === 0) {
             playTone(musicTick % 16 < 8 ? 65.41 : 49.00, 'triangle', 0.3, 0.1);
         }
@@ -289,12 +319,22 @@
     const shieldTimerDisplay = document.getElementById('shield-timer');
     const doubleUi = document.getElementById('2x-ui');
     const doubleTimerDisplay = document.getElementById('2x-timer');
+    
+    // Elemen UI Baru
+    const freezeUi = document.getElementById('freeze-ui');
+    const freezeTimerDisplay = document.getElementById('freeze-timer');
+    const spreadUi = document.getElementById('spread-ui');
+    const spreadTimerDisplay = document.getElementById('spread-timer');
+    const pauseScreen = document.getElementById('pause-screen');
+    const pauseBtn = document.getElementById('pause-btn');
+
     const gameBody = document.getElementById('game-body');
 
     const gridSize = 64;
     let gameActive = true;
+    let isPaused = false; // Flag Pause
+    
     let score = 0;
-    let bonusScore = 0; 
     let highscore = localStorage.getItem('elephant_highscore') || 0;
     highscoreElement.innerText = highscore;
     
@@ -305,11 +345,46 @@
     let gcY = 0;
     let gcSpeed = 0.22; 
     let startGridY = 0;
+    
+    // --- FITUR COMBO MENEMBAK ---
+    let comboCount = 0;
+    let comboTimer = 0;
 
     const particles = [];
     const bullets = [];
     const items = [];
     let rows = [];
+    
+    // --- FITUR DIGITAL FOOTPRINTS & TEKS PARTIKEL (Zzz & COMBO) ---
+    let footprints = [];
+    let textParticles = [];
+
+    // --- VARIABEL SISTEM FASE LEVEL ---
+    let currentPhase = 0;
+    let glitchTimer = 0;
+
+    function updatePhaseColors() {
+        let bg, cvsBg, cGrass, cRoad, cRiver;
+        if (currentPhase === 0) { // Fase 0: Cerah (Biru/Cyan Digital)
+            bg = '#0a1216'; cvsBg = '#0d181f'; 
+            cGrass = '#1c2e36'; cRoad = '#253d47'; cRiver = '#111e26';
+        } else if (currentPhase === 1) { // Fase 1: Transisi (Ungu/Gelap Mencekam)
+            bg = '#120a14'; cvsBg = '#170d1a'; 
+            cGrass = '#26152b'; cRoad = '#361e3d'; cRiver = '#1c0c21';
+        } else { // Fase 2: Puncak Mencekam (Merah/Hitam Nightmare)
+            bg = '#050000'; cvsBg = '#0d0000'; 
+            cGrass = '#1a0303'; cRoad = '#000000'; cRiver = '#1a0505';
+        }
+        
+        document.body.style.backgroundColor = bg;
+        canvas.style.backgroundColor = cvsBg;
+        
+        if (typeof rows !== 'undefined' && rows.length > 0) {
+            rows.forEach(r => {
+                r.color = r.type === 'grass' ? cGrass : (r.type === 'road' ? cRoad : cRiver);
+            });
+        }
+    }
     
     function spawnParticles(x, y, color, count = 10, speed = 5) {
         for (let i = 0; i < count; i++) {
@@ -325,6 +400,13 @@
         }
     }
 
+    function togglePause() {
+        if (!gameActive) return;
+        isPaused = !isPaused;
+        pauseScreen.classList.toggle('hidden', !isPaused);
+        pauseBtn.innerText = isPaused ? '▶️' : '⏸️';
+    }
+
     function resize() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
@@ -333,23 +415,37 @@
     resize();
 
     function updateScoreDisplay() {
-        let mult = player.isDoubleScore ? 2 : 1;
-        score = ((maxDistance * 10) + bonusScore) * mult;
         scoreElement.innerText = score;
         if (score > highscore) {
             highscore = score;
             highscoreElement.innerText = highscore;
             localStorage.setItem('elephant_highscore', highscore);
         }
+
+        let newPhase = 0;
+        if (score >= 8000) newPhase = 2; // Level 3 (Mencekam Total)
+        else if (score >= 4000) newPhase = 1; // Level 2 (Transisi)
+        
+        if (newPhase > currentPhase) {
+            currentPhase = newPhase;
+            glitchTimer = 80; 
+            sfx.rocket(); 
+            updatePhaseColors(); 
+        }
     }
 
     const player = {
         gridX: 0, gridY: 0, pixelX: 0, pixelY: 0, targetX: 0, targetY: 0,
         isMoving: false, direction: 'up', jumpAnim: 0, 
+        
+        // Status Power-ups
         hasShield: false, shieldTime: 0,
         isDoubleScore: false, doubleTime: 0,
         isRocketing: false, rocketDist: 0,
-        frame: 0, trunkAnim: 0,
+        isFrozen: false, freezeTime: 0, // Musuh lambat
+        isSpread: false, spreadTime: 0, // Tembakan menyebar
+        
+        frame: 0, trunkAnim: 0, idleTimer: 0, breathePhase: 0,
         
         init() {
             this.gridX = Math.floor(canvas.width / 2 / gridSize);
@@ -365,9 +461,20 @@
             this.doubleTime = 0;
             this.isRocketing = false;
             this.rocketDist = 0;
+            this.isFrozen = false;
+            this.freezeTime = 0;
+            this.isSpread = false;
+            this.spreadTime = 0;
+            
             this.trunkAnim = 0;
+            this.idleTimer = 0;
+            this.breathePhase = 0;
+            
             shieldUi.classList.add('hidden');
             doubleUi.classList.add('hidden');
+            freezeUi.classList.add('hidden');
+            spreadUi.classList.add('hidden');
+            
             gameBody.classList.remove('active-2x');
             gcY = (this.gridY + 10) * gridSize; 
             cameraY = this.pixelY - canvas.height + gridSize * 3;
@@ -375,13 +482,19 @@
         },
 
         move(dx, dy) {
-            if (this.isMoving || !gameActive || this.isRocketing) return;
+            if (this.isMoving || !gameActive || this.isRocketing || isPaused) return;
             startAudioOnInteraction();
+            
+            // Jatuhkan jejak sebelum mulai lompat
+            footprints.push({x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2 + 15, life: 1});
+            
             this.gridX += dx; this.gridY += dy;
             this.targetX = this.gridX * gridSize;
             this.targetY = this.gridY * gridSize;
             this.isMoving = true;
             this.jumpAnim = 0;
+            this.idleTimer = 0; // Reset diam saat bergerak
+            
             if (dx > 0) this.direction = 'right';
             if (dx < 0) this.direction = 'left';
             if (dy < 0) this.direction = 'up';
@@ -392,51 +505,106 @@
 
             let currentDist = startGridY - this.gridY;
             if (currentDist > maxDistance) {
+                let distGained = currentDist - maxDistance;
                 maxDistance = currentDist;
+                score += (distGained * 10) * (this.isDoubleScore ? 2 : 1);
                 updateScoreDisplay();
-                gcSpeed = 0.22 + (score / 4500);
+                gcSpeed = 0.22 + (Math.min(score, 10000) / 10000) * 0.25; 
             }
         },
 
         shoot() {
-            if (!gameActive || this.isRocketing) return;
+            if (!gameActive || this.isRocketing || isPaused) return;
             startAudioOnInteraction();
             this.trunkAnim = 1.0;
+            this.idleTimer = 0; // Reset diam saat menembak
             sfx.shoot();
-            bullets.push({
-                x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2,
-                dir: this.direction, speed: 14, life: 60
-            });
+            
+            // Hitung kecepatan dasar peluru bergantung arah
+            let baseVx = 0, baseVy = 0;
+            let spd = 14;
+            if (this.direction === 'up') baseVy = -spd;
+            if (this.direction === 'down') baseVy = spd;
+            if (this.direction === 'left') baseVx = -spd;
+            if (this.direction === 'right') baseVx = spd;
+
+            // Peluru utama
+            bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: baseVx, vy: baseVy, life: 60 });
+            
+            // Jika fitur OVERCLOCK/Spread Shot aktif, tembakan pecah jadi 3
+            if (this.isSpread) {
+                if (baseVy !== 0) { // Tembak vertikal, sebar ke horizontal
+                    bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: -4, vy: baseVy, life: 60 });
+                    bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: 4, vy: baseVy, life: 60 });
+                } else { // Tembak horizontal, sebar ke vertikal
+                    bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: baseVx, vy: -4, life: 60 });
+                    bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: baseVx, vy: 4, life: 60 });
+                }
+            }
+            
             spawnParticles(this.pixelX + gridSize/2, this.pixelY + gridSize/2, '#ffffff', 8, 4);
             shakeAmount = 4;
         },
 
         activateRocket() {
             this.isRocketing = true;
-            this.rocketDist = 15; // Jumlah baris yang dilompati
+            this.rocketDist = 15;
             sfx.rocket();
-            this.hasShield = true; // Kebal saat ngeroket
+            this.hasShield = true; 
             this.shieldTime = Math.max(this.shieldTime, 2000);
+            this.idleTimer = 0;
         },
 
         update() {
+            // Animasi nafas dan idle berjalan meskipun saat di-pause!
+            this.frame++;
+            this.idleTimer++;
+            
+            let isSleeping = this.idleTimer > 180;
+            
+            // Gerakan pernafasan tubuh: lebih lambat saat tidur
+            this.breathePhase += isSleeping ? 0.04 : 0.1;
+            
+            if (isSleeping && this.idleTimer % 60 === 0) {
+                // Keluarkan partikel Zzz jika diam lebih dari 3 detik
+                textParticles.push({
+                    x: this.pixelX + gridSize/2 + (Math.random()*10 - 5), 
+                    y: this.pixelY - 15, 
+                    text: 'Z', life: 2, dy: -0.5, color: '#e6edf3', size: 14 + Math.random()*6
+                });
+            }
+
+            if (isPaused) return; // --- STOP UPDATE LAINNYA JIKA PAUSE ---
+
             if (this.isRocketing) {
                 this.gridY -= 0.5;
                 this.targetY = this.gridY * gridSize;
                 this.pixelY = this.targetY;
                 this.rocketDist -= 0.5;
                 
-                // Efek api roket
                 spawnParticles(this.pixelX + gridSize/2, this.pixelY + gridSize, '#f85149', 2, 3);
                 spawnParticles(this.pixelX + gridSize/2, this.pixelY + gridSize, '#ff7b72', 1, 2);
                 shakeAmount = 5;
 
                 if (this.rocketDist <= 0) {
-                    this.isRocketing = false;
-                    this.gridY = Math.round(this.gridY);
-                    this.targetY = this.gridY * gridSize;
-                    bonusScore += 100;
-                    updateScoreDisplay();
+                    let currentTargetY = Math.round(this.gridY);
+                    let rowObj = rows.find(r => r.y === currentTargetY);
+                    if (rowObj && rowObj.type === 'grass') {
+                        this.isRocketing = false;
+                        this.gridY = currentTargetY;
+                        this.targetY = this.gridY * gridSize;
+                        
+                        let currentDist = startGridY - this.gridY;
+                        if (currentDist > maxDistance) {
+                            let distGained = currentDist - maxDistance;
+                            maxDistance = currentDist;
+                            score += (distGained * 10) * (this.isDoubleScore ? 2 : 1);
+                        }
+                        score += 100 * (this.isDoubleScore ? 2 : 1); 
+                        updateScoreDisplay();
+                    } else {
+                        this.rocketDist = 1;
+                    }
                 }
             }
 
@@ -448,33 +616,41 @@
             }
             if (this.trunkAnim > 0) this.trunkAnim -= 0.12;
             
+            // Pengaturan Timers Power-ups
             if (this.hasShield) {
                 this.shieldTime -= 16.67; 
                 shieldTimerDisplay.innerText = Math.max(0, Math.ceil(this.shieldTime / 1000));
-                if (this.shieldTime <= 0) {
-                    this.hasShield = false;
-                    shieldUi.classList.add('hidden');
-                }
+                if (this.shieldTime <= 0) { this.hasShield = false; shieldUi.classList.add('hidden'); }
             }
 
             if (this.isDoubleScore) {
                 this.doubleTime -= 16.67;
                 doubleTimerDisplay.innerText = Math.max(0, Math.ceil(this.doubleTime / 1000));
                 if (this.doubleTime <= 0) {
-                    this.isDoubleScore = false;
-                    doubleUi.classList.add('hidden');
-                    gameBody.classList.remove('active-2x');
-                    updateScoreDisplay();
+                    this.isDoubleScore = false; doubleUi.classList.add('hidden');
+                    gameBody.classList.remove('active-2x'); updateScoreDisplay(); 
                 }
             }
             
-            this.frame++;
+            if (this.isFrozen) {
+                this.freezeTime -= 16.67;
+                freezeTimerDisplay.innerText = Math.max(0, Math.ceil(this.freezeTime / 1000));
+                if (this.freezeTime <= 0) { this.isFrozen = false; freezeUi.classList.add('hidden'); }
+            }
+            
+            if (this.isSpread) {
+                this.spreadTime -= 16.67;
+                spreadTimerDisplay.innerText = Math.max(0, Math.ceil(this.spreadTime / 1000));
+                if (this.spreadTime <= 0) { this.isSpread = false; spreadUi.classList.add('hidden'); }
+            }
         },
 
         draw(camY) {
             const jumpH = Math.sin(this.jumpAnim) * 24;
             const dx = this.pixelX + gridSize/2;
             const dy = this.pixelY + gridSize/2 - camY - jumpH;
+
+            let isSleeping = this.idleTimer > 180;
 
             ctx.save();
             ctx.translate(dx, dy);
@@ -488,7 +664,9 @@
             const tsc = '#2cf1da';
             const tscD = '#1ebca9';
             const tscL = '#61ffed';
-            const brth = Math.sin(this.frame * 0.1) * 2;
+            
+            // Nafas lebih dalam (amplitudo lebih besar) saat tidur pulas
+            const brth = Math.sin(this.breathePhase) * (isSleeping ? 2.5 : 2);
 
             if (this.direction === 'left') ctx.scale(-1, 1);
 
@@ -516,37 +694,84 @@
             ctx.fillRect(-20, -32 + brth, 40, 5); 
 
             // Ears
-            const earWave = Math.sin(this.frame * 0.08) * 4;
+            // Telinga turun dan diam tidak mengepak ketika sedang tidur pulas
+            const earWave = isSleeping ? 0 : Math.sin(this.frame * 0.08) * 4;
+            const earDropY = isSleeping ? 4 : 0; 
             ctx.fillStyle = tscD;
-            ctx.fillRect(-32 - earWave, -30 + brth, 14, 22); 
-            ctx.fillRect(18 + earWave, -30 + brth, 14, 22);  
+            ctx.fillRect(-32 - earWave, -30 + brth + earDropY, 14, 22); 
+            ctx.fillRect(18 + earWave, -30 + brth + earDropY, 14, 22);  
             
             // Tusks
             ctx.fillStyle = '#f0f0f0';
             ctx.fillRect(12, -14 + brth, 6, 12);
             ctx.fillRect(-18, -14 + brth, 6, 12);
 
-            // Eyes
-            ctx.fillStyle = 'black';
-            ctx.fillRect(7, -24 + brth, 6, 6); ctx.fillRect(-13, -24 + brth, 6, 6);
-            ctx.fillStyle = 'white';
-            ctx.fillRect(10, -24 + brth, 2, 2); ctx.fillRect(-10, -24 + brth, 2, 2);
+            // Fitur Kedipan Normal & Tidur
+            // Berkedip normal berkala, atau terpejam utuh jika isSleeping
+            let isBlinking = isSleeping || (this.frame % 150 > 140);
+            
+            if (isBlinking) {
+                // Gambar garis kelopak mata saat terpejam
+                ctx.fillStyle = tscD;
+                ctx.fillRect(6, -23 + brth, 8, 4); 
+                ctx.fillRect(-14, -23 + brth, 8, 4);
+            } else {
+                // Eyes Normal
+                ctx.fillStyle = 'black';
+                ctx.fillRect(7, -24 + brth, 6, 6); ctx.fillRect(-13, -24 + brth, 6, 6);
+                ctx.fillStyle = 'white';
+                ctx.fillRect(10, -24 + brth, 2, 2); ctx.fillRect(-10, -24 + brth, 2, 2);
+            }
 
-            // Trunk
+            if (this.trunkAnim > 0) {
+                // Ekspresi menembak
+                ctx.fillStyle = '#0f6359';
+                ctx.save(); ctx.translate(-10, -26 + brth); ctx.rotate(0.15); ctx.fillRect(-4, 0, 8, 3); ctx.restore();
+                ctx.save(); ctx.translate(10, -26 + brth); ctx.rotate(-0.15); ctx.fillRect(-4, 0, 8, 3); ctx.restore();
+                
+                ctx.fillStyle = '#1a0505'; 
+                const mouthHeight = 4 + (this.trunkAnim * 8);
+                ctx.fillRect(-6, -13 + brth, 12, mouthHeight);
+                ctx.fillStyle = '#f85149'; 
+                ctx.fillRect(-3, -13 + brth + mouthHeight - 3, 6, 3);
+            } else if (isSleeping) {
+                // Animasi mulut mendengkur: seirama dengan nafas (terbuka saat tubuh ke atas)
+                ctx.fillStyle = '#1a0505';
+                let snoreOpen = Math.max(0, Math.sin(this.breathePhase) * 6);
+                if (snoreOpen > 0) {
+                    ctx.fillRect(-4, -13 + brth, 8, snoreOpen);
+                }
+            }
+
+            // Trunk 
             ctx.save();
             ctx.fillStyle = tsc;
             let ang = this.direction === 'up' ? -1.3 : (this.direction === 'down' ? 1.3 : -0.2);
+            
+            // Belalai jatuh lunglai ke bawah saat tidur, kecuali baru saja / sedang menembak
+            if (isSleeping && this.trunkAnim <= 0) {
+                ang = 1.3; 
+            }
+            
             ctx.translate(0, -10 + brth); 
             ctx.rotate(ang);
-            ctx.fillRect(0, -4, 20 + (this.trunkAnim * 25), 10);
+            ctx.fillRect(-4, -4, 24 + (this.trunkAnim * 25), 10);
             ctx.restore();
 
-            // Rocket Booster Visual
             if (this.isRocketing) {
                 ctx.fillStyle = '#f85149';
                 ctx.fillRect(-10, 20, 20, 15);
                 ctx.fillStyle = '#ff7b72';
                 ctx.fillRect(-5, 35, 10, 10 + Math.random()*15);
+            }
+
+            // Aura Pembekuan Visual
+            if (this.isFrozen) {
+                ctx.strokeStyle = 'rgba(88, 166, 255, 0.5)';
+                ctx.lineWidth = 10;
+                ctx.beginPath();
+                ctx.arc(0, 0, 52 + Math.sin(this.frame*0.1)*5, 0, Math.PI*2);
+                ctx.stroke();
             }
 
             if (this.hasShield) {
@@ -565,10 +790,21 @@
     function createRow(y, forceType = null) {
         const types = ['grass', 'road', 'road', 'river', 'grass'];
         let type = forceType || types[Math.floor(Math.random() * types.length)];
+        let diffMult = 1 + (Math.min(score, 10000) / 10000) * 1.5;
+
+        let cGrass, cRoad, cRiver;
+        if (currentPhase === 0) {
+            cGrass = '#1c2e36'; cRoad = '#253d47'; cRiver = '#111e26';
+        } else if (currentPhase === 1) {
+            cGrass = '#26152b'; cRoad = '#361e3d'; cRiver = '#1c0c21';
+        } else {
+            cGrass = '#1a0303'; cRoad = '#000000'; cRiver = '#1a0505'; 
+        }
+
         const row = {
             y: y, type: type, entities: [],
-            speed: (Math.random() * 2 + 1.2) * (Math.random() > 0.5 ? 1 : -1),
-            color: type === 'grass' ? '#0d1117' : (type === 'road' ? '#161b22' : '#440a0a'),
+            speed: (Math.random() * 2 + 1.2) * diffMult * (Math.random() > 0.5 ? 1 : -1),
+            color: type === 'grass' ? cGrass : (type === 'road' ? cRoad : cRiver),
             deco: []
         };
 
@@ -588,20 +824,24 @@
                 x: Math.random() * canvas.width, w: 140, h: 46, color: 'rgba(0, 255, 255, 0.2)' 
             });
         } else if (type === 'grass') {
-            if (y < player.gridY - 4 && Math.random() > 0.65) {
+            let bugThreshold = 0.65 - (Math.min(score, 10000) / 10000) * 0.35;
+            
+            if (y < player.gridY - 4 && Math.random() > bugThreshold) {
                 row.entities.push({ 
                     x: Math.random() * canvas.width, isBug: true, w: 44, h: 44, 
-                    moveSpeed: (2.5 + Math.random() * 2), glow: 0 
+                    moveSpeed: (2.5 + Math.random() * 2) * diffMult, glow: 0 
                 });
             }
             
-            // Item Spawning (Reduced Shield, Added 2X and Rocket)
+            // Penambahan Item Spawn untuk Fitur Baru (Freeze & Spread)
             if (Math.random() > 0.95) {
                 let r = Math.random();
                 let itmX = Math.floor(Math.random() * (canvas.width/gridSize));
-                if (r < 0.3) items.push({ gridX: itmX, gridY: y, type: 'shield' });
-                else if (r < 0.7) items.push({ gridX: itmX, gridY: y, type: 'double' });
-                else items.push({ gridX: itmX, gridY: y, type: 'rocket' });
+                if (r < 0.2) items.push({ gridX: itmX, gridY: y, type: 'shield' });
+                else if (r < 0.4) items.push({ gridX: itmX, gridY: y, type: 'double' });
+                else if (r < 0.6) items.push({ gridX: itmX, gridY: y, type: 'rocket' });
+                else if (r < 0.8) items.push({ gridX: itmX, gridY: y, type: 'freeze' });
+                else items.push({ gridX: itmX, gridY: y, type: 'spread' });
             }
         }
         return row;
@@ -610,6 +850,8 @@
     function checkCollision(title, text) {
         if (player.hasShield || player.isRocketing) return;
         gameActive = false;
+        isPaused = false;
+        pauseBtn.style.display = 'none';
         sfx.die();
         shakeAmount = 40;
         document.getElementById('msg-title').innerText = title;
@@ -629,15 +871,40 @@
 
     function update() {
         if (!gameActive) return;
-        player.update();
         
+        player.update(); // Update logika idle & kedip
+        
+        // --- Pergerakan kamera dan animasi partikel selalu berjalan (Bahkan saat Pause!) ---
         targetCameraY = player.pixelY - canvas.height + gridSize * 3;
         cameraY += (targetCameraY - cameraY) * 0.08;
         
+        for (let i = textParticles.length - 1; i >= 0; i--) {
+            const p = textParticles[i];
+            p.y += p.dy; p.life -= 0.02;
+            if (p.life <= 0) textParticles.splice(i, 1);
+        }
+
+        if (isPaused) return; // >> JIKA PAUSE, HENTIKAN UPDATE MEKANIK DI BAWAH INI <<
+
+        // Logic Combo Menurun
+        if (comboTimer > 0) {
+            comboTimer--;
+            if (comboTimer === 0) comboCount = 0; // Combo putus
+        }
+        
         if (shakeAmount > 0) shakeAmount *= 0.9;
-        gcY -= gcSpeed;
+        
+        // Multiplier waktu saat dibekukan (Freeze Powerup)
+        let timeScale = player.isFrozen ? 0.2 : 1;
+        
+        gcY -= (gcSpeed * timeScale);
 
         if (player.pixelY + 30 > gcY) checkCollision("MEMORY PURGE", "Elephant failed to avoid the memory sweep!");
+
+        for (let i = footprints.length - 1; i >= 0; i--) {
+            footprints[i].life -= 0.01;
+            if (footprints[i].life <= 0) footprints.splice(i, 1);
+        }
 
         for (let i = particles.length - 1; i >= 0; i--) {
             const p = particles[i];
@@ -647,8 +914,8 @@
         }
 
         bullets.forEach((b, i) => {
-            if (b.dir === 'up') b.y -= b.speed; else if (b.dir === 'down') b.y += b.speed;
-            else if (b.dir === 'left') b.x -= b.speed; else b.x += b.speed;
+            b.x += b.vx; 
+            b.y += b.vy;
             b.life--;
             rows.forEach(row => {
                 row.entities.forEach((ent, j) => {
@@ -659,7 +926,22 @@
                             spawnParticles(ent.x + ent.w/2, ey + ent.h/2, '#ff4444', 20, 8);
                             row.entities.splice(j, 1);
                             bullets.splice(i, 1);
-                            bonusScore += 150; 
+                            
+                            // --- FITUR COMBO SCORE ---
+                            comboCount++;
+                            comboTimer = 120; // 2 Detik waktu combo
+                            let comboBonus = comboCount > 1 ? (comboCount * 50) : 0;
+                            let gainedScore = (150 + comboBonus) * (player.isDoubleScore ? 2 : 1);
+                            score += gainedScore;
+                            
+                            let msg = comboCount > 1 ? `COMBO x${comboCount}!` : `+${gainedScore}`;
+                            textParticles.push({
+                                x: ent.x + 20, y: ey, 
+                                text: msg, life: 1.5, dy: -1.5, 
+                                color: comboCount > 1 ? '#e3b341' : '#ff4444', 
+                                size: comboCount > 1 ? 24 : 16
+                            });
+                            
                             updateScoreDisplay();
                         }
                     }
@@ -672,18 +954,17 @@
             if (player.gridX === itm.gridX && Math.round(player.gridY) === itm.gridY) {
                 sfx.item();
                 if (itm.type === 'shield') {
-                    player.hasShield = true;
-                    player.shieldTime = 5000;
-                    shieldUi.classList.remove('hidden');
+                    player.hasShield = true; player.shieldTime = 5000; shieldUi.classList.remove('hidden');
                 } else if (itm.type === 'double') {
-                    player.isDoubleScore = true;
-                    player.doubleTime = 20000;
-                    doubleUi.classList.remove('hidden');
-                    gameBody.classList.add('active-2x');
-                    updateScoreDisplay();
+                    player.isDoubleScore = true; player.doubleTime = 20000; doubleUi.classList.remove('hidden'); gameBody.classList.add('active-2x'); updateScoreDisplay();
                 } else if (itm.type === 'rocket') {
                     player.activateRocket();
+                } else if (itm.type === 'freeze') {
+                    player.isFrozen = true; player.freezeTime = 5000; freezeUi.classList.remove('hidden');
+                } else if (itm.type === 'spread') {
+                    player.isSpread = true; player.spreadTime = 10000; spreadUi.classList.remove('hidden');
                 }
+                
                 spawnParticles(player.pixelX + gridSize/2, player.pixelY + gridSize/2, '#ffffff', 20, 5);
                 items.splice(i, 1);
             }
@@ -693,10 +974,11 @@
         rows.forEach(row => {
             row.entities.forEach(ent => {
                 if (ent.isBug) {
-                    ent.x += ent.moveSpeed; if (ent.x > canvas.width || ent.x < 0) ent.moveSpeed *= -1;
+                    ent.x += (ent.moveSpeed * timeScale); // Diperlambat oleh Freeze
+                    if (ent.x > canvas.width || ent.x < 0) ent.moveSpeed *= -1;
                     ent.glow = (Math.sin(Date.now()/200) + 1) / 2;
                 } else {
-                    ent.x += row.speed;
+                    ent.x += (row.speed * timeScale); // Diperlambat oleh Freeze
                     if (ent.x > canvas.width + 120) ent.x = -120; if (ent.x < -120) ent.x = canvas.width + 120;
                 }
                 const px = player.pixelX + 22; const py = player.pixelY + 22;
@@ -711,7 +993,7 @@
                 for(let log of row.entities) {
                     if (player.pixelX+gridSize/2 > log.x && player.pixelX+gridSize/2 < log.x+log.w) {
                         safe = true; 
-                        player.pixelX += row.speed; 
+                        player.pixelX += (row.speed * timeScale); 
                         player.targetX = player.pixelX;
                         player.gridX = Math.round(player.pixelX/gridSize);
                         shiftedByLog = true;
@@ -728,8 +1010,37 @@
     function draw() {
         ctx.save();
         if (shakeAmount > 1) ctx.translate((Math.random()-0.5)*shakeAmount, (Math.random()-0.5)*shakeAmount);
-        ctx.clearRect(0,0, canvas.width, canvas.height);
         
+        ctx.clearRect(0,0, canvas.width, canvas.height);
+
+        if (glitchTimer > 0) {
+            glitchTimer--;
+            ctx.translate((Math.random()-0.5)*25, (Math.random()-0.5)*25);
+            ctx.fillStyle = Math.random() > 0.5 ? `rgba(255,255,255,0.05)` : `rgba(255,0,0,0.05)`;
+            ctx.fillRect(-50, -50, canvas.width+100, canvas.height+100);
+            
+            if (glitchTimer % 10 > 2) { 
+                ctx.save();
+                ctx.fillStyle = '#f85149';
+                ctx.font = '900 32px monospace';
+                ctx.textAlign = 'center';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'red';
+                let msg = currentPhase === 1 ? "WARNING: SYSTEM CORRUPTION" : "CRITICAL: NIGHTMARE PROTOCOL";
+                ctx.fillText(msg, canvas.width/2, canvas.height/2);
+                ctx.restore();
+            }
+        }
+        
+        // --- DRAW FOOTPRINTS (DIGITAL STEPS) ---
+        footprints.forEach(p => {
+            ctx.globalAlpha = Math.max(0, p.life * 0.4);
+            ctx.fillStyle = '#2cf1da';
+            ctx.fillRect(p.x - 8, p.y - cameraY, 5, 5);
+            ctx.fillRect(p.x + 3, p.y - cameraY, 5, 5);
+        });
+        ctx.globalAlpha = 1;
+
         rows.forEach(row => {
             const sy = row.y * gridSize - cameraY;
             if (sy < -gridSize * 2 || sy > canvas.height + gridSize) return;
@@ -738,17 +1049,38 @@
             ctx.fillRect(0, sy, canvas.width, gridSize);
 
             if (row.type === 'river') {
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.1)';
-                ctx.font = '10px monospace';
-                for(let i=0; i<canvas.width; i+=40) {
-                    const char = Math.random() > 0.5 ? '1' : '0';
-                    ctx.fillText(char, (i + Date.now()/20) % canvas.width, sy + 15 + (i%30));
+                const cableColors = ['#f85149', '#3fb950', '#58a6ff', '#e3b341'];
+                for (let i = 0; i < gridSize; i += 12) {
+                    const colorIdx = (Math.abs(row.y) + Math.floor(i/12)) % cableColors.length;
+                    
+                    ctx.strokeStyle = '#010409';
+                    ctx.lineWidth = 7;
+                    ctx.beginPath();
+                    for (let x = 0; x <= canvas.width + 40; x += 40) {
+                        const wave = Math.sin((x + row.y * 50) * 0.03 + (i * 0.5)) * 6;
+                        if (x === 0) ctx.moveTo(x, sy + i + 8 + wave);
+                        else ctx.lineTo(x, sy + i + 8 + wave);
+                    }
+                    ctx.stroke();
+                    
+                    ctx.strokeStyle = cableColors[colorIdx];
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    for (let x = 0; x <= canvas.width + 40; x += 40) {
+                        const wave = Math.sin((x + row.y * 50) * 0.03 + (i * 0.5)) * 6;
+                        if (x === 0) ctx.moveTo(x, sy + i + 8 + wave);
+                        else ctx.lineTo(x, sy + i + 8 + wave);
+                    }
+                    ctx.stroke();
                 }
             }
 
             if (row.type === 'grass') {
                 row.deco.forEach(d => {
-                    ctx.fillStyle = `rgba(44, 241, 218, ${d.opacity})`;
+                    let dotColor = '44, 241, 218'; 
+                    if (currentPhase === 1) dotColor = '200, 0, 255'; 
+                    if (currentPhase === 2) dotColor = '255, 0, 0'; 
+                    ctx.fillStyle = `rgba(${dotColor}, ${d.opacity})`;
                     ctx.fillRect(d.x, sy + gridSize/2, d.size, d.size);
                 });
             }
@@ -783,8 +1115,13 @@
                     ctx.shadowBlur = 10; ctx.shadowColor = '#3fb950';
                     ctx.fillRect(ent.x, ey, ent.w, ent.h);
                 } else if (row.type === 'river') {
-                    ctx.fillStyle = 'rgba(0, 255, 255, 0.15)';
-                    ctx.strokeStyle = 'rgba(0, 255, 255, 0.8)';
+                    let logFill = 'rgba(0, 255, 255, 0.35)';
+                    let logStroke = 'rgba(0, 255, 255, 0.9)';
+                    if (currentPhase === 1) { logFill = 'rgba(255, 0, 255, 0.35)'; logStroke = 'rgba(255, 0, 255, 0.9)'; }
+                    if (currentPhase === 2) { logFill = 'rgba(255, 0, 0, 0.35)'; logStroke = 'rgba(255, 0, 0, 0.9)'; }
+                    
+                    ctx.fillStyle = logFill;
+                    ctx.strokeStyle = logStroke;
                     ctx.lineWidth = 2;
                     ctx.fillRect(ent.x, ey, ent.w, ent.h);
                     ctx.strokeRect(ent.x, ey, ent.w, ent.h);
@@ -794,6 +1131,7 @@
         });
 
         items.forEach(itm => {
+            ctx.save(); 
             const iy = itm.gridY * gridSize - cameraY + gridSize/2;
             const float = Math.sin(Date.now()/250) * 8;
             ctx.shadowBlur = 12;
@@ -801,17 +1139,25 @@
             let emoji = "🛡️";
             if (itm.type === 'double') { emoji = "⭐"; ctx.shadowColor = "#e3b341"; }
             else if (itm.type === 'rocket') { emoji = "🚀"; ctx.shadowColor = "#f85149"; }
-            else { ctx.shadowColor = "#3fb950"; }
+            else if (itm.type === 'freeze') { emoji = "❄️"; ctx.shadowColor = "#58a6ff"; }
+            else if (itm.type === 'spread') { emoji = "🔥"; ctx.shadowColor = "#f85149"; }
+            
             ctx.fillText(emoji, itm.gridX * gridSize + 15, iy + 10 + float);
+            ctx.restore(); 
         });
 
         const gsy = gcY - cameraY;
         const grad = ctx.createLinearGradient(0, gsy, 0, gsy + 400);
-        grad.addColorStop(0, 'rgba(248, 81, 73, 0.45)');
-        grad.addColorStop(1, 'rgba(248, 81, 73, 0)');
+        let gcColorBase = '255, 150, 0'; 
+        let gcColorHex = '#ff9600';
+        if (currentPhase === 1) { gcColorBase = '200, 0, 255'; gcColorHex = '#c800ff'; } 
+        if (currentPhase === 2) { gcColorBase = '248, 81, 73'; gcColorHex = '#f85149'; } 
+        
+        grad.addColorStop(0, `rgba(${gcColorBase}, 0.45)`);
+        grad.addColorStop(1, `rgba(${gcColorBase}, 0)`);
         ctx.fillStyle = grad;
         ctx.fillRect(0, gsy, canvas.width, 1000);
-        ctx.fillStyle = '#f85149';
+        ctx.fillStyle = gcColorHex;
         ctx.fillRect(0, gsy - 4, canvas.width, 4);
 
         particles.forEach(p => {
@@ -822,20 +1168,43 @@
         ctx.globalAlpha = 1;
 
         bullets.forEach(b => { 
+            ctx.save(); 
             ctx.shadowBlur = 10; ctx.shadowColor = 'white';
             ctx.fillStyle = 'white'; ctx.fillRect(b.x-4, b.y-cameraY-4, 8, 8);
+            ctx.restore();
+        });
+        
+        // --- DRAW TEXT PARTICLES (Zzz & COMBO) ---
+        textParticles.forEach(p => {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, p.life);
+            ctx.fillStyle = p.color;
+            ctx.font = `900 ${p.size}px monospace`;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = p.color;
+            ctx.fillText(p.text, p.x, p.y - cameraY);
+            ctx.restore();
         });
 
         player.draw(cameraY);
         ctx.restore();
+        
         update();
         requestAnimationFrame(draw);
     }
 
     function resetGame() {
-        maxDistance = 0; score = 0; bonusScore = 0;
+        maxDistance = 0; score = 0; 
         scoreElement.innerText = score;
-        gcSpeed = 0.22; player.init(); 
+        gcSpeed = 0.22; 
+        currentPhase = 0; 
+        glitchTimer = 0;
+        isPaused = false;
+        pauseBtn.style.display = 'flex';
+        comboCount = 0; comboTimer = 0;
+        textParticles = []; footprints = [];
+        updatePhaseColors(); 
+        player.init(); 
         initMap();
         gameActive = true; messageBox.style.display = 'none';
         if (musicStarted) playMusic();
@@ -859,8 +1228,10 @@
         if (e.code === 'ArrowLeft' || e.code === 'KeyA') player.move(-1, 0);
         if (e.code === 'ArrowRight' || e.code === 'KeyD') player.move(1, 0);
         if (e.code === 'Space' || e.code === 'KeyF') player.shoot();
+        if (e.code === 'Escape' || e.code === 'KeyP') togglePause();
     });
 
+    updatePhaseColors(); 
     player.init();
     initMap();
     window.onload = draw;
