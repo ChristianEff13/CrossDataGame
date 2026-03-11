@@ -32,7 +32,7 @@
             z-index: 10;
         }
         .stats-box {
-            background: rgba(13, 17, 23, 0.4); /* Transparansi diubah dari 0.9 ke 0.4 */
+            background: rgba(13, 17, 23, 0.4); 
             backdrop-filter: blur(8px);
             padding: 15px 25px;
             border-radius: 16px;
@@ -380,23 +380,19 @@
         document.body.style.backgroundColor = bg;
         canvas.style.backgroundColor = cvsBg;
         
-        // Memperbarui warna dan MENTRANSFORMASI virus seketika jika masuk fase lanjut
         if (typeof rows !== 'undefined' && rows.length > 0) {
             rows.forEach(r => {
                 r.color = r.type === 'grass' ? cGrass : (r.type === 'road' ? cRoad : cRiver);
                 
-                // --- INSTANT VIRUS MUTATION ---
                 r.entities.forEach(ent => {
                     if (ent.isBug) {
                         let diffMult = 1 + (Math.min(score, 10000) / 10000) * 1.5;
                         let dir = ent.moveSpeed > 0 ? 1 : -1;
                         
-                        // Mutasi jadi alien pink di fase 3 (Peluang 40%)
                         if (currentPhase === 2 && ent.bugType !== 'pink' && Math.random() > 0.6) {
                             ent.bugType = 'pink';
                             ent.moveSpeed = 3.6 * diffMult * dir; 
                         } 
-                        // Mutasi jadi ungu di fase 2 (Peluang 50%)
                         else if (currentPhase >= 1 && ent.bugType !== 'purple' && ent.bugType !== 'pink' && Math.random() > 0.5) {
                             ent.bugType = 'purple';
                             ent.moveSpeed = 2.8 * diffMult * dir; 
@@ -444,8 +440,8 @@
         }
 
         let newPhase = 0;
-        if (score >= 8000) newPhase = 2; // Level 3
-        else if (score >= 4000) newPhase = 1; // Level 2 
+        if (score >= 8000) newPhase = 2; 
+        else if (score >= 4000) newPhase = 1; 
         
         if (newPhase > currentPhase) {
             currentPhase = newPhase;
@@ -566,10 +562,10 @@
 
         activateRocket() {
             this.isRocketing = true;
-            this.rocketDist = 15;
+            this.rocketDist = 30; 
             sfx.rocket();
             this.hasShield = true; 
-            this.shieldTime = Math.max(this.shieldTime, 2000);
+            this.shieldTime = Math.max(this.shieldTime, 3000); 
             this.idleTimer = 0;
         },
 
@@ -798,6 +794,23 @@
         const types = ['grass', 'road', 'road', 'river', 'grass'];
         let type = forceType || types[Math.floor(Math.random() * types.length)];
         
+        // --- MENCEGAH TRAP (Spawn bertumpuk/mustahil) ---
+        if (!forceType && rows.length >= 2) {
+            let last1 = rows[rows.length-1].type;
+            let last2 = rows[rows.length-2].type;
+            
+            // Maksimal 2 sungai berturut-turut
+            if (type === 'river' && last1 === 'river' && last2 === 'river') {
+                type = 'grass';
+            }
+            // Maksimal 3 jalan raya berturut-turut
+            if (type === 'road' && last1 === 'road' && last2 === 'road') {
+                if (rows.length >= 3 && rows[rows.length-3].type === 'road') {
+                    type = 'grass';
+                }
+            }
+        }
+        
         let diffMult = 1 + (Math.min(score, 10000) / 10000) * 0.8;
 
         let cGrass, cRoad, cRiver;
@@ -816,6 +829,8 @@
             deco: []
         };
 
+        const trackLen = canvas.width + 240; // Area spawn virtual yang lebih luas dari layar
+
         if (type === 'grass') {
             for(let i=0; i<8; i++) {
                 row.deco.push({x: Math.random() * canvas.width, size: 2 + Math.random()*3, opacity: 0.1 + Math.random()*0.3});
@@ -823,14 +838,59 @@
         }
 
         if (type === 'road') {
-            for (let i = 0; i < 2; i++) row.entities.push({ 
-                x: Math.random() * canvas.width, w: 110, h: 42, color: '#3fb950' 
-            });
+            // Kembali ke random spawn murni dengan variasi ukuran
+            let numCars = Math.max(2, Math.floor(trackLen / 300));
+            for (let i = 0; i < numCars; i++) {
+                let carW = 80 + Math.random() * 70;
+                let carX;
+                let overlap;
+                let attempts = 0;
+                
+                // Deteksi anti-tumpang tindih
+                do {
+                    overlap = false;
+                    carX = -120 + Math.random() * (trackLen - carW);
+                    for (let e of row.entities) {
+                        // Memastikan ada jarak minimal (gap) antar mobil
+                        if (carX < e.x + e.w + 30 && carX + carW + 30 > e.x) { 
+                            overlap = true; break;
+                        }
+                    }
+                    attempts++;
+                } while (overlap && attempts < 50);
+                
+                if (!overlap) {
+                    row.entities.push({ x: carX, w: carW, h: 42, color: '#3fb950' });
+                }
+            }
         } else if (type === 'river') {
             row.speed *= 0.7;
-            for (let i = 0; i < 3; i++) row.entities.push({ 
-                x: Math.random() * canvas.width, w: 140, h: 46, color: 'rgba(0, 255, 255, 0.2)' 
-            });
+            // Random spawn murni untuk log dengan variasi ukuran
+            let numLogs = Math.max(3, Math.floor(trackLen / 250));
+            for (let i = 0; i < numLogs; i++) {
+                let logW = 120 + Math.random() * 100; 
+                let logX;
+                let overlap;
+                let attempts = 0;
+                
+                // Deteksi anti-tumpang tindih untuk log
+                do {
+                    overlap = false;
+                    logX = -120 + Math.random() * (trackLen - logW);
+                    for (let e of row.entities) {
+                        // Memastikan ada jarak minimal (gap) antar log
+                        if (logX < e.x + e.w + 20 && logX + logW + 20 > e.x) {
+                            overlap = true; break;
+                        }
+                    }
+                    attempts++;
+                } while (overlap && attempts < 50);
+                
+                // Memastikan tidak terjadi jebakan (selalu ada minimal log meski ruang sempit)
+                if (!overlap || row.entities.length < 2) {
+                    row.entities.push({ x: logX, w: logW, h: 46, color: 'rgba(0, 255, 255, 0.2)' });
+                }
+            }
         } else if (type === 'grass') {
             let bugThreshold = 0.75 - (Math.min(score, 10000) / 10000) * 0.25;
             
@@ -838,12 +898,10 @@
                 let bType = 'green';
                 let bSpeed = 1.2 * diffMult; 
                 
-                // Spawn Alien Pink 3 Mata di fase 3 (Score >= 8000)
                 if (score >= 8000 && Math.random() > 0.6) {
                     bType = 'pink';
-                    bSpeed = 3.6 * diffMult; // Lebih cepat
+                    bSpeed = 3.6 * diffMult; 
                 } 
-                // Spawn Alien Ungu di fase 2
                 else if (score >= 4000 && Math.random() > 0.5) {
                     bType = 'purple';
                     bSpeed = 2.8 * diffMult; 
@@ -860,11 +918,29 @@
             if (Math.random() > 0.95) {
                 let r = Math.random();
                 let itmX = Math.floor(Math.random() * (canvas.width/gridSize));
-                if (r < 0.2) items.push({ gridX: itmX, gridY: y, type: 'shield' });
-                else if (r < 0.4) items.push({ gridX: itmX, gridY: y, type: 'double' });
-                else if (r < 0.6) items.push({ gridX: itmX, gridY: y, type: 'rocket' });
-                else if (r < 0.8) items.push({ gridX: itmX, gridY: y, type: 'freeze' });
-                else items.push({ gridX: itmX, gridY: y, type: 'spread' });
+                let itmType = 'shield';
+
+                if (currentPhase === 0) {
+                    if (r < 0.15) itmType = 'shield';
+                    else if (r < 0.55) itmType = 'double'; 
+                    else if (r < 0.70) itmType = 'rocket';
+                    else if (r < 0.85) itmType = 'freeze';
+                    else itmType = 'spread';
+                } else if (currentPhase === 1) {
+                    if (r < 0.15) itmType = 'shield';
+                    else if (r < 0.30) itmType = 'double';
+                    else if (r < 0.45) itmType = 'rocket';
+                    else if (r < 0.85) itmType = 'freeze'; 
+                    else itmType = 'spread';
+                } else {
+                    if (r < 0.35) itmType = 'shield'; 
+                    else if (r < 0.45) itmType = 'double';
+                    else if (r < 0.55) itmType = 'rocket';
+                    else if (r < 0.90) itmType = 'freeze'; 
+                    else itmType = 'spread';
+                }
+
+                items.push({ gridX: itmX, gridY: y, type: itmType });
             }
         }
         return row;
@@ -944,9 +1020,9 @@
                         if (b.x > ent.x && b.x < ent.x + ent.w && b.y > ey && b.y < ey + ent.h) {
                             sfx.hit();
                             
-                            let pColor = '#78e038'; // Default partikel Hijau
-                            if (ent.bugType === 'purple') pColor = '#df3bf0'; // Partikel Ungu
-                            if (ent.bugType === 'pink') pColor = '#f92672'; // Partikel Pink
+                            let pColor = '#78e038'; 
+                            if (ent.bugType === 'purple') pColor = '#df3bf0'; 
+                            if (ent.bugType === 'pink') pColor = '#f92672'; 
                             
                             spawnParticles(ent.x + ent.w/2, ey + ent.h/2, pColor, 20, 8); 
                             
@@ -996,6 +1072,8 @@
         });
 
         let shiftedByLog = false;
+        const trackLen = canvas.width + 240; 
+        
         rows.forEach(row => {
             row.entities.forEach(ent => {
                 if (ent.isBug) {
@@ -1004,7 +1082,9 @@
                     ent.glow = (Math.sin(Date.now()/200) + 1) / 2;
                 } else {
                     ent.x += (row.speed * timeScale); 
-                    if (ent.x > canvas.width + 120) ent.x = -120; if (ent.x < -120) ent.x = canvas.width + 120;
+                    // [FIXED] Rotasi halus tanpa merusak jarak dan tatanan objek yang sudah ada
+                    if (ent.x > canvas.width + 120) ent.x -= trackLen; 
+                    else if (ent.x < -120) ent.x += trackLen;
                 }
                 const px = player.pixelX + 22; const py = player.pixelY + 22;
                 const ey = row.y * gridSize + (gridSize-ent.h)/2;
@@ -1119,36 +1199,30 @@
                     const isAlt = Math.floor(Date.now() / 300) % 2 === 0;
                     
                     if (ent.bugType === 'pink') {
-                        // --- ALIEN PINK MATA 3 BARU (FASE 3) ---
                         ctx.shadowBlur = 15;
                         ctx.shadowColor = `rgba(249, 38, 114, ${ent.glow})`;
                         
                         const pC = '#f92672';
                         const tipC = '#00ffff';
                         
-                        // Body
                         ctx.fillStyle = pC;
                         ctx.fillRect(bugX + 3*p, bugY + 3*p, 9*p, 5*p);
                         ctx.fillRect(bugX + 4*p, bugY + 2*p, 7*p, p);
                         
-                        // Tentacles
                         const tW = isAlt ? 1 : 0;
                         
-                        // Tentacles Kanan
                         ctx.fillRect(bugX + 12*p, bugY + (3+tW)*p, 2*p, p);
                         ctx.fillStyle = tipC; ctx.fillRect(bugX + 14*p, bugY + (2+tW)*p, p, p);
                         
                         ctx.fillStyle = pC; ctx.fillRect(bugX + 11*p, bugY + (1-tW)*p, p, 2*p);
                         ctx.fillStyle = tipC; ctx.fillRect(bugX + 12*p, bugY + (0-tW)*p, p, p);
                         
-                        // Tentacles Kiri
                         ctx.fillStyle = pC; ctx.fillRect(bugX + 1*p, bugY + (3+tW)*p, 2*p, p);
                         ctx.fillStyle = tipC; ctx.fillRect(bugX + 0*p, bugY + (2+tW)*p, p, p);
                         
                         ctx.fillStyle = pC; ctx.fillRect(bugX + 3*p, bugY + (1-tW)*p, p, 2*p);
                         ctx.fillStyle = tipC; ctx.fillRect(bugX + 2*p, bugY + (0-tW)*p, p, p);
                         
-                        // Legs
                         const lW = isAlt ? 0 : 1;
                         ctx.fillStyle = pC;
                         ctx.fillRect(bugX + 4*p, bugY + 8*p, p, (2+lW)*p);
@@ -1156,11 +1230,10 @@
                         ctx.fillRect(bugX + 8*p, bugY + 8*p, p, (2+lW)*p);
                         ctx.fillRect(bugX + 10*p, bugY + 8*p, p, (3-lW)*p);
                         
-                        // 3 Eyes
                         ctx.fillStyle = '#ffffff';
-                        ctx.fillRect(bugX + 3.5*p, bugY + 4.5*p, 2*p, 2*p); // Left
-                        ctx.fillRect(bugX + 6.5*p, bugY + 3.5*p, 2*p, 2*p); // Center
-                        ctx.fillRect(bugX + 9.5*p, bugY + 4.5*p, 2*p, 2*p); // Right
+                        ctx.fillRect(bugX + 3.5*p, bugY + 4.5*p, 2*p, 2*p); 
+                        ctx.fillRect(bugX + 6.5*p, bugY + 3.5*p, 2*p, 2*p); 
+                        ctx.fillRect(bugX + 9.5*p, bugY + 4.5*p, 2*p, 2*p); 
                         
                         ctx.fillStyle = '#000000';
                         ctx.fillRect(bugX + 4*p, bugY + 5*p, p, p);
