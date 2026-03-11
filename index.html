@@ -177,7 +177,6 @@
                 <div id="2x-ui" class="hidden text-[10px] text-yellow-400 font-bold flex items-center gap-1">
                     <span class="animate-bounce">★</span> 2X_SCORE_MULTIPLIER: ON (<span id="2x-timer">20</span>s)
                 </div>
-                <!-- Status Powerup Baru -->
                 <div id="freeze-ui" class="hidden text-[10px] text-cyan-400 font-bold flex items-center gap-1">
                     <span class="animate-pulse">❄️</span> SYS_FREEZE: ACTIVE (<span id="freeze-timer">5</span>s)
                 </div>
@@ -264,14 +263,11 @@
     function playMusic() {
         if (!gameActive) return;
         
-        // --- FITUR TENSI AUDIO ---
-        // Jika sedang pause, tunggu bentar lalu loop lagi tanpa mainkan nada
         if (isPaused) {
             setTimeout(playMusic, 150);
             return;
         }
         
-        // Tempo makin cepat kalau batas kematian (Garbage Collector) sudah dekat (kurang dari 400 pixel)
         let distToDeath = gcY - player.pixelY;
         const tempo = distToDeath < 400 ? 90 : 150; 
         
@@ -332,7 +328,7 @@
 
     const gridSize = 64;
     let gameActive = true;
-    let isPaused = false; // Flag Pause
+    let isPaused = false;
     
     let score = 0;
     let highscore = localStorage.getItem('elephant_highscore') || 0;
@@ -346,7 +342,6 @@
     let gcSpeed = 0.22; 
     let startGridY = 0;
     
-    // --- FITUR COMBO MENEMBAK ---
     let comboCount = 0;
     let comboTimer = 0;
 
@@ -355,7 +350,6 @@
     const items = [];
     let rows = [];
     
-    // --- FITUR DIGITAL FOOTPRINTS & TEKS PARTIKEL (Zzz & COMBO) ---
     let footprints = [];
     let textParticles = [];
 
@@ -365,13 +359,13 @@
 
     function updatePhaseColors() {
         let bg, cvsBg, cGrass, cRoad, cRiver;
-        if (currentPhase === 0) { // Fase 0: Cerah (Biru/Cyan Digital)
+        if (currentPhase === 0) { 
             bg = '#0a1216'; cvsBg = '#0d181f'; 
             cGrass = '#1c2e36'; cRoad = '#253d47'; cRiver = '#111e26';
-        } else if (currentPhase === 1) { // Fase 1: Transisi (Ungu/Gelap Mencekam)
+        } else if (currentPhase === 1) { 
             bg = '#120a14'; cvsBg = '#170d1a'; 
             cGrass = '#26152b'; cRoad = '#361e3d'; cRiver = '#1c0c21';
-        } else { // Fase 2: Puncak Mencekam (Merah/Hitam Nightmare)
+        } else { 
             bg = '#050000'; cvsBg = '#0d0000'; 
             cGrass = '#1a0303'; cRoad = '#000000'; cRiver = '#1a0505';
         }
@@ -379,9 +373,24 @@
         document.body.style.backgroundColor = bg;
         canvas.style.backgroundColor = cvsBg;
         
+        // Memperbarui warna dan MENTRANSFORMASI virus seketika jika masuk fase ungu
         if (typeof rows !== 'undefined' && rows.length > 0) {
             rows.forEach(r => {
                 r.color = r.type === 'grass' ? cGrass : (r.type === 'road' ? cRoad : cRiver);
+                
+                // --- INSTANT VIRUS MUTATION (Menjawab Bug Virus Tidak Ungu) ---
+                r.entities.forEach(ent => {
+                    if (ent.isBug && currentPhase >= 1) {
+                        // Secara acak merubah 50% virus yang sudah ada di layar menjadi ungu
+                        if (ent.bugType !== 'purple' && Math.random() > 0.5) {
+                            ent.bugType = 'purple';
+                            let diffMult = 1 + (Math.min(score, 10000) / 10000) * 1.5;
+                            // Mempertahankan arah jalannya (kiri/kanan) tapi membuatnya lebih cepat
+                            let dir = ent.moveSpeed > 0 ? 1 : -1;
+                            ent.moveSpeed = 2.8 * diffMult * dir; 
+                        }
+                    }
+                });
             });
         }
     }
@@ -423,8 +432,8 @@
         }
 
         let newPhase = 0;
-        if (score >= 8000) newPhase = 2; // Level 3 (Mencekam Total)
-        else if (score >= 4000) newPhase = 1; // Level 2 (Transisi)
+        if (score >= 8000) newPhase = 2; // Level 3
+        else if (score >= 4000) newPhase = 1; // Level 2 
         
         if (newPhase > currentPhase) {
             currentPhase = newPhase;
@@ -438,12 +447,12 @@
         gridX: 0, gridY: 0, pixelX: 0, pixelY: 0, targetX: 0, targetY: 0,
         isMoving: false, direction: 'up', jumpAnim: 0, 
         
-        // Status Power-ups
         hasShield: false, shieldTime: 0,
         isDoubleScore: false, doubleTime: 0,
         isRocketing: false, rocketDist: 0,
-        isFrozen: false, freezeTime: 0, // Musuh lambat
-        isSpread: false, spreadTime: 0, // Tembakan menyebar
+        isFrozen: false, freezeTime: 0,
+        isSpread: false, spreadTime: 0, 
+        isInvincible: false, // Status Cheat Invincible
         
         frame: 0, trunkAnim: 0, idleTimer: 0, breathePhase: 0,
         
@@ -465,6 +474,7 @@
             this.freezeTime = 0;
             this.isSpread = false;
             this.spreadTime = 0;
+            this.isInvincible = false; // Reset cheat saat game mengulang
             
             this.trunkAnim = 0;
             this.idleTimer = 0;
@@ -485,7 +495,6 @@
             if (this.isMoving || !gameActive || this.isRocketing || isPaused) return;
             startAudioOnInteraction();
             
-            // Jatuhkan jejak sebelum mulai lompat
             footprints.push({x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2 + 15, life: 1});
             
             this.gridX += dx; this.gridY += dy;
@@ -493,7 +502,7 @@
             this.targetY = this.gridY * gridSize;
             this.isMoving = true;
             this.jumpAnim = 0;
-            this.idleTimer = 0; // Reset diam saat bergerak
+            this.idleTimer = 0; 
             
             if (dx > 0) this.direction = 'right';
             if (dx < 0) this.direction = 'left';
@@ -517,10 +526,9 @@
             if (!gameActive || this.isRocketing || isPaused) return;
             startAudioOnInteraction();
             this.trunkAnim = 1.0;
-            this.idleTimer = 0; // Reset diam saat menembak
+            this.idleTimer = 0; 
             sfx.shoot();
             
-            // Hitung kecepatan dasar peluru bergantung arah
             let baseVx = 0, baseVy = 0;
             let spd = 14;
             if (this.direction === 'up') baseVy = -spd;
@@ -528,15 +536,13 @@
             if (this.direction === 'left') baseVx = -spd;
             if (this.direction === 'right') baseVx = spd;
 
-            // Peluru utama
             bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: baseVx, vy: baseVy, life: 60 });
             
-            // Jika fitur OVERCLOCK/Spread Shot aktif, tembakan pecah jadi 3
             if (this.isSpread) {
-                if (baseVy !== 0) { // Tembak vertikal, sebar ke horizontal
+                if (baseVy !== 0) { 
                     bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: -4, vy: baseVy, life: 60 });
                     bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: 4, vy: baseVy, life: 60 });
-                } else { // Tembak horizontal, sebar ke vertikal
+                } else { 
                     bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: baseVx, vy: -4, life: 60 });
                     bullets.push({ x: this.pixelX + gridSize/2, y: this.pixelY + gridSize/2, vx: baseVx, vy: 4, life: 60 });
                 }
@@ -556,17 +562,13 @@
         },
 
         update() {
-            // Animasi nafas dan idle berjalan meskipun saat di-pause!
             this.frame++;
             this.idleTimer++;
             
             let isSleeping = this.idleTimer > 180;
-            
-            // Gerakan pernafasan tubuh: lebih lambat saat tidur
             this.breathePhase += isSleeping ? 0.04 : 0.1;
             
             if (isSleeping && this.idleTimer % 60 === 0) {
-                // Keluarkan partikel Zzz jika diam lebih dari 3 detik
                 textParticles.push({
                     x: this.pixelX + gridSize/2 + (Math.random()*10 - 5), 
                     y: this.pixelY - 15, 
@@ -574,7 +576,7 @@
                 });
             }
 
-            if (isPaused) return; // --- STOP UPDATE LAINNYA JIKA PAUSE ---
+            if (isPaused) return; 
 
             if (this.isRocketing) {
                 this.gridY -= 0.5;
@@ -616,7 +618,6 @@
             }
             if (this.trunkAnim > 0) this.trunkAnim -= 0.12;
             
-            // Pengaturan Timers Power-ups
             if (this.hasShield) {
                 this.shieldTime -= 16.67; 
                 shieldTimerDisplay.innerText = Math.max(0, Math.ceil(this.shieldTime / 1000));
@@ -655,7 +656,6 @@
             ctx.save();
             ctx.translate(dx, dy);
 
-            // Shadow
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.beginPath();
             ctx.ellipse(0, 26 + jumpH/2, 24 - jumpH/4, 8 - jumpH/8, 0, 0, Math.PI*2);
@@ -665,17 +665,14 @@
             const tscD = '#1ebca9';
             const tscL = '#61ffed';
             
-            // Nafas lebih dalam (amplitudo lebih besar) saat tidur pulas
             const brth = Math.sin(this.breathePhase) * (isSleeping ? 2.5 : 2);
 
             if (this.direction === 'left') ctx.scale(-1, 1);
 
-            // Legs
             ctx.fillStyle = '#0f6359';
             ctx.fillRect(-15, 10, 8, 16); 
             ctx.fillRect(7, 10, 8, 16);
             
-            // Body
             ctx.fillStyle = tscD;
             ctx.fillRect(-22, -12 + brth, 44, 28); 
             ctx.fillStyle = tsc;
@@ -687,36 +684,28 @@
             ctx.fillRect(-10, 12, 9, 14); 
             ctx.fillRect(1, 12, 9, 14);
 
-            // Head
             ctx.fillStyle = tsc;
             ctx.fillRect(-20, -32 + brth, 40, 24);
             ctx.fillStyle = tscL;
             ctx.fillRect(-20, -32 + brth, 40, 5); 
 
-            // Ears
-            // Telinga turun dan diam tidak mengepak ketika sedang tidur pulas
             const earWave = isSleeping ? 0 : Math.sin(this.frame * 0.08) * 4;
             const earDropY = isSleeping ? 4 : 0; 
             ctx.fillStyle = tscD;
             ctx.fillRect(-32 - earWave, -30 + brth + earDropY, 14, 22); 
             ctx.fillRect(18 + earWave, -30 + brth + earDropY, 14, 22);  
             
-            // Tusks
             ctx.fillStyle = '#f0f0f0';
             ctx.fillRect(12, -14 + brth, 6, 12);
             ctx.fillRect(-18, -14 + brth, 6, 12);
 
-            // Fitur Kedipan Normal & Tidur
-            // Berkedip normal berkala, atau terpejam utuh jika isSleeping
             let isBlinking = isSleeping || (this.frame % 150 > 140);
             
             if (isBlinking) {
-                // Gambar garis kelopak mata saat terpejam
                 ctx.fillStyle = tscD;
                 ctx.fillRect(6, -23 + brth, 8, 4); 
                 ctx.fillRect(-14, -23 + brth, 8, 4);
             } else {
-                // Eyes Normal
                 ctx.fillStyle = 'black';
                 ctx.fillRect(7, -24 + brth, 6, 6); ctx.fillRect(-13, -24 + brth, 6, 6);
                 ctx.fillStyle = 'white';
@@ -724,7 +713,6 @@
             }
 
             if (this.trunkAnim > 0) {
-                // Ekspresi menembak
                 ctx.fillStyle = '#0f6359';
                 ctx.save(); ctx.translate(-10, -26 + brth); ctx.rotate(0.15); ctx.fillRect(-4, 0, 8, 3); ctx.restore();
                 ctx.save(); ctx.translate(10, -26 + brth); ctx.rotate(-0.15); ctx.fillRect(-4, 0, 8, 3); ctx.restore();
@@ -735,7 +723,6 @@
                 ctx.fillStyle = '#f85149'; 
                 ctx.fillRect(-3, -13 + brth + mouthHeight - 3, 6, 3);
             } else if (isSleeping) {
-                // Animasi mulut mendengkur: seirama dengan nafas (terbuka saat tubuh ke atas)
                 ctx.fillStyle = '#1a0505';
                 let snoreOpen = Math.max(0, Math.sin(this.breathePhase) * 6);
                 if (snoreOpen > 0) {
@@ -743,12 +730,10 @@
                 }
             }
 
-            // Trunk 
             ctx.save();
             ctx.fillStyle = tsc;
             let ang = this.direction === 'up' ? -1.3 : (this.direction === 'down' ? 1.3 : -0.2);
             
-            // Belalai jatuh lunglai ke bawah saat tidur, kecuali baru saja / sedang menembak
             if (isSleeping && this.trunkAnim <= 0) {
                 ang = 1.3; 
             }
@@ -765,7 +750,6 @@
                 ctx.fillRect(-5, 35, 10, 10 + Math.random()*15);
             }
 
-            // Aura Pembekuan Visual
             if (this.isFrozen) {
                 ctx.strokeStyle = 'rgba(88, 166, 255, 0.5)';
                 ctx.lineWidth = 10;
@@ -781,6 +765,17 @@
                 ctx.lineDashOffset = -this.frame * 2;
                 ctx.beginPath();
                 ctx.arc(0, 0, 48, 0, Math.PI*2);
+                ctx.stroke();
+            }
+
+            // Aura Emas saat Cheat Invincible Aktif
+            if (this.isInvincible) {
+                ctx.strokeStyle = '#e3b341';
+                ctx.lineWidth = 4;
+                ctx.setLineDash([10, 5]);
+                ctx.lineDashOffset = -this.frame * 4;
+                ctx.beginPath();
+                ctx.arc(0, 0, 55, 0, Math.PI*2);
                 ctx.stroke();
             }
             ctx.restore();
@@ -827,13 +822,22 @@
             let bugThreshold = 0.65 - (Math.min(score, 10000) / 10000) * 0.35;
             
             if (y < player.gridY - 4 && Math.random() > bugThreshold) {
+                let bType = 'green';
+                let bSpeed = 1.2 * diffMult; 
+                
+                if (score >= 4000 && Math.random() > 0.5) {
+                    bType = 'purple';
+                    bSpeed = 2.8 * diffMult; 
+                }
+
+                let initialDir = Math.random() > 0.5 ? 1 : -1;
+
                 row.entities.push({ 
-                    x: Math.random() * canvas.width, isBug: true, w: 44, h: 44, 
-                    moveSpeed: (2.5 + Math.random() * 2) * diffMult, glow: 0 
+                    x: Math.random() * canvas.width, isBug: true, bugType: bType, w: 44, h: 44, 
+                    moveSpeed: bSpeed * initialDir, glow: 0 
                 });
             }
             
-            // Penambahan Item Spawn untuk Fitur Baru (Freeze & Spread)
             if (Math.random() > 0.95) {
                 let r = Math.random();
                 let itmX = Math.floor(Math.random() * (canvas.width/gridSize));
@@ -848,7 +852,7 @@
     }
 
     function checkCollision(title, text) {
-        if (player.hasShield || player.isRocketing) return;
+        if (player.hasShield || player.isRocketing || player.isInvincible) return; // Tambahan bypass cheat di sini
         gameActive = false;
         isPaused = false;
         pauseBtn.style.display = 'none';
@@ -872,9 +876,8 @@
     function update() {
         if (!gameActive) return;
         
-        player.update(); // Update logika idle & kedip
+        player.update(); 
         
-        // --- Pergerakan kamera dan animasi partikel selalu berjalan (Bahkan saat Pause!) ---
         targetCameraY = player.pixelY - canvas.height + gridSize * 3;
         cameraY += (targetCameraY - cameraY) * 0.08;
         
@@ -884,17 +887,15 @@
             if (p.life <= 0) textParticles.splice(i, 1);
         }
 
-        if (isPaused) return; // >> JIKA PAUSE, HENTIKAN UPDATE MEKANIK DI BAWAH INI <<
+        if (isPaused) return; 
 
-        // Logic Combo Menurun
         if (comboTimer > 0) {
             comboTimer--;
-            if (comboTimer === 0) comboCount = 0; // Combo putus
+            if (comboTimer === 0) comboCount = 0; 
         }
         
         if (shakeAmount > 0) shakeAmount *= 0.9;
         
-        // Multiplier waktu saat dibekukan (Freeze Powerup)
         let timeScale = player.isFrozen ? 0.2 : 1;
         
         gcY -= (gcSpeed * timeScale);
@@ -923,13 +924,15 @@
                         const ey = row.y * gridSize + (gridSize-ent.h)/2;
                         if (b.x > ent.x && b.x < ent.x + ent.w && b.y > ey && b.y < ey + ent.h) {
                             sfx.hit();
-                            spawnParticles(ent.x + ent.w/2, ey + ent.h/2, '#ff4444', 20, 8);
+                            
+                            let pColor = ent.bugType === 'purple' ? '#df3bf0' : '#78e038';
+                            spawnParticles(ent.x + ent.w/2, ey + ent.h/2, pColor, 20, 8); 
+                            
                             row.entities.splice(j, 1);
                             bullets.splice(i, 1);
                             
-                            // --- FITUR COMBO SCORE ---
                             comboCount++;
-                            comboTimer = 120; // 2 Detik waktu combo
+                            comboTimer = 120; 
                             let comboBonus = comboCount > 1 ? (comboCount * 50) : 0;
                             let gainedScore = (150 + comboBonus) * (player.isDoubleScore ? 2 : 1);
                             score += gainedScore;
@@ -938,7 +941,7 @@
                             textParticles.push({
                                 x: ent.x + 20, y: ey, 
                                 text: msg, life: 1.5, dy: -1.5, 
-                                color: comboCount > 1 ? '#e3b341' : '#ff4444', 
+                                color: comboCount > 1 ? '#e3b341' : pColor, 
                                 size: comboCount > 1 ? 24 : 16
                             });
                             
@@ -974,11 +977,11 @@
         rows.forEach(row => {
             row.entities.forEach(ent => {
                 if (ent.isBug) {
-                    ent.x += (ent.moveSpeed * timeScale); // Diperlambat oleh Freeze
+                    ent.x += (ent.moveSpeed * timeScale); 
                     if (ent.x > canvas.width || ent.x < 0) ent.moveSpeed *= -1;
                     ent.glow = (Math.sin(Date.now()/200) + 1) / 2;
                 } else {
-                    ent.x += (row.speed * timeScale); // Diperlambat oleh Freeze
+                    ent.x += (row.speed * timeScale); 
                     if (ent.x > canvas.width + 120) ent.x = -120; if (ent.x < -120) ent.x = canvas.width + 120;
                 }
                 const px = player.pixelX + 22; const py = player.pixelY + 22;
@@ -1000,7 +1003,7 @@
                         break;
                     }
                 }
-                if (!safe && !player.hasShield) checkCollision("SEGMENTATION FAULT", "Elephant fell into the memory stream!");
+                if (!safe && !player.hasShield && !player.isInvincible) checkCollision("SEGMENTATION FAULT", "Elephant fell into the memory stream!"); // Tambahan bypass cheat di sini
             }
         });
 
@@ -1032,7 +1035,6 @@
             }
         }
         
-        // --- DRAW FOOTPRINTS (DIGITAL STEPS) ---
         footprints.forEach(p => {
             ctx.globalAlpha = Math.max(0, p.life * 0.4);
             ctx.fillStyle = '#2cf1da';
@@ -1088,27 +1090,80 @@
             row.entities.forEach(ent => {
                 const ey = sy + (gridSize-ent.h)/2;
                 ctx.save();
+                
                 if (ent.isBug) {
-                    const p = Math.floor(ent.w / 11); 
+                    const p = ent.w / 15; 
                     const bugX = ent.x; const bugY = ey;
                     const isAlt = Math.floor(Date.now() / 300) % 2 === 0;
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = `rgba(248, 81, 73, ${ent.glow})`;
-                    ctx.fillStyle = '#f85149';
-                    const drawPix = (x, y) => ctx.fillRect(bugX + x*p, bugY + y*p, p, p);
-                    drawPix(2,0); drawPix(8,0); drawPix(3,1); drawPix(7,1);
-                    for(let i=2; i<=8; i++) drawPix(i,2);
-                    for(let i=1; i<=3; i++) drawPix(i,3); for(let i=7; i<=9; i++) drawPix(i,3);
-                    for(let i=0; i<=10; i++) drawPix(i,4);
-                    if (isAlt) {
-                        drawPix(0,5); drawPix(10,5); drawPix(0,6); drawPix(2,6); drawPix(8,6); drawPix(10,6);
-                        drawPix(3,7); drawPix(4,7); drawPix(6,7); drawPix(7,7); for(let i=2; i<=8; i++) drawPix(i,5);
+                    
+                    if (ent.bugType === 'purple') {
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = `rgba(223, 59, 240, ${ent.glow})`;
+                        
+                        ctx.fillStyle = '#df3bf0';
+                        ctx.fillRect(bugX + 6*p, bugY + 1*p, 3*p, p);
+                        ctx.fillRect(bugX + 5*p, bugY + 2*p, 5*p, p);
+                        ctx.fillRect(bugX + 4*p, bugY + 3*p, 7*p, p);
+                        ctx.fillRect(bugX + 3*p, bugY + 4*p, 9*p, 4*p); 
+                        ctx.fillRect(bugX + 5*p, bugY + 8*p, 5*p, 2*p); 
+                        ctx.fillRect(bugX + 6*p, bugY + 10*p, 3*p, p);
+
+                        const armRaise = isAlt ? 0 : 1;
+                        ctx.fillRect(bugX + 0*p, bugY + (4+armRaise)*p, 2*p, p);
+                        ctx.fillRect(bugX + 1*p, bugY + (5+armRaise)*p, 2*p, p);
+                        ctx.fillRect(bugX + 2*p, bugY + (6+armRaise)*p, 2*p, p);
+                        
+                        ctx.fillRect(bugX + 13*p, bugY + (4+armRaise)*p, 2*p, p);
+                        ctx.fillRect(bugX + 12*p, bugY + (5+armRaise)*p, 2*p, p);
+                        ctx.fillRect(bugX + 11*p, bugY + (6+armRaise)*p, 2*p, p);
+
+                        const legShift = isAlt ? 0 : 1;
+                        ctx.fillRect(bugX + (5+legShift)*p, bugY + 10*p, p, 3*p);
+                        ctx.fillRect(bugX + (4+legShift)*p, bugY + 13*p, 2*p, p);
+                        
+                        ctx.fillRect(bugX + (9-legShift)*p, bugY + 10*p, p, 3*p);
+                        ctx.fillRect(bugX + (9-legShift)*p, bugY + 13*p, 2*p, p);
+
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(bugX + 4*p, bugY + 4*p, 3*p, 2*p);
+                        ctx.fillRect(bugX + 8*p, bugY + 4*p, 3*p, 2*p);
+
+                        ctx.fillStyle = '#000000';
+                        ctx.fillRect(bugX + 5*p, bugY + 4.5*p, p, p);
+                        ctx.fillRect(bugX + 9*p, bugY + 4.5*p, p, p);
+
                     } else {
-                        for(let i=2; i<=8; i++) drawPix(i,5); drawPix(0,5); drawPix(10,5); drawPix(1,6); drawPix(9,6);
-                        drawPix(0,7); drawPix(2,7); drawPix(8,7); drawPix(10,7);
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = `rgba(120, 224, 56, ${ent.glow})`;
+                        
+                        ctx.fillStyle = '#78e038';
+                        ctx.fillRect(bugX + 5*p, bugY + 1*p, 5*p, p);
+                        ctx.fillRect(bugX + 4*p, bugY + 2*p, 7*p, p);
+                        ctx.fillRect(bugX + 3*p, bugY + 3*p, 9*p, p);
+                        ctx.fillRect(bugX + 2*p, bugY + 4*p, 11*p, 8*p);
+                        
+                        if (isAlt) {
+                            ctx.fillRect(bugX + 2*p, bugY + 12*p, 2*p, 2*p);
+                            ctx.fillRect(bugX + 5*p, bugY + 12*p, 2*p, 3*p);
+                            ctx.fillRect(bugX + 8*p, bugY + 12*p, 2*p, 3*p);
+                            ctx.fillRect(bugX + 11*p, bugY + 12*p, 2*p, 2*p);
+                        } else {
+                            ctx.fillRect(bugX + 3*p, bugY + 12*p, 2*p, 3*p);
+                            ctx.fillRect(bugX + 6*p, bugY + 12*p, 3*p, 2*p);
+                            ctx.fillRect(bugX + 10*p, bugY + 12*p, 2*p, 3*p);
+                        }
+
+                        const armY = isAlt ? 7*p : 6*p;
+                        ctx.fillRect(bugX + 0, bugY + armY, 2*p, 2*p);
+                        ctx.fillRect(bugX + 13*p, bugY + armY, 2*p, 2*p);
+
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(bugX + 6*p, bugY + 5*p, 3*p, 4*p);
+                        ctx.fillRect(bugX + 5*p, bugY + 6*p, 5*p, 2*p);
+
+                        ctx.fillStyle = '#000000';
+                        ctx.fillRect(bugX + 6.5*p, bugY + 6.5*p, 2*p, 1.5*p);
                     }
-                    ctx.fillStyle = 'white';
-                    ctx.fillRect(bugX + 3*p, bugY + 3*p, p, p); ctx.fillRect(bugX + 7*p, bugY + 3*p, p, p);
                     
                 } else if (row.type === 'road') {
                     ctx.fillStyle = ent.color;
@@ -1174,7 +1229,6 @@
             ctx.restore();
         });
         
-        // --- DRAW TEXT PARTICLES (Zzz & COMBO) ---
         textParticles.forEach(p => {
             ctx.save();
             ctx.globalAlpha = Math.max(0, p.life);
@@ -1229,6 +1283,44 @@
         if (e.code === 'ArrowRight' || e.code === 'KeyD') player.move(1, 0);
         if (e.code === 'Space' || e.code === 'KeyF') player.shoot();
         if (e.code === 'Escape' || e.code === 'KeyP') togglePause();
+    });
+
+    // --- ADMIN CHEAT LOGIC ---
+    let cheatCode = "leonita";
+    let cheatInput = "";
+    let cheatTimer = null;
+
+    window.addEventListener('keydown', e => {
+        // Cek jika tombol yang ditekan adalah huruf
+        if (e.key && e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
+            if (cheatInput === "") {
+                // Mulai batas waktu 5 detik dari ketikan huruf pertama
+                cheatTimer = setTimeout(() => {
+                    cheatInput = "";
+                }, 5000);
+            }
+            
+            cheatInput += e.key.toLowerCase();
+            
+            // Jika kata "leonita" berhasil diketik sebelum 5 detik habis
+            if (cheatInput.includes(cheatCode)) {
+                player.isInvincible = true; // Aktifkan God Mode
+                cheatInput = ""; // Reset input
+                clearTimeout(cheatTimer); // Hentikan timer
+                
+                // Efek Suara & Visual Teks saat Cheat Aktif
+                sfx.item();
+                textParticles.push({
+                    x: player.pixelX + gridSize/2, 
+                    y: player.pixelY, 
+                    text: "GOD MODE ACTIVATED", 
+                    life: 3, 
+                    dy: -1.5, 
+                    color: '#e3b341', 
+                    size: 20
+                });
+            }
+        }
     });
 
     updatePhaseColors(); 
